@@ -1,0 +1,9 @@
+.git
+.gitignore
+.gocache
+.gomodcache
+tmp
+bin
+*.log
+docker-compose.yml
+.env
