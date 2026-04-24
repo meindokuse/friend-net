@@ -6,7 +6,7 @@ option go_package = "github.com/meindokuse/cloud-drive/auth-service/proto/authv1
 
 service AuthService {
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
-  rpc GetUserIDByToken(GetUserIDByTokenRequest) returns (UserIDResponse);
+  rpc GetAccountIDByToken(GetAccountIDByTokenRequest) returns (AccountIDResponse);
 }
 
 message ValidateTokenRequest {
@@ -15,16 +15,16 @@ message ValidateTokenRequest {
 
 message ValidateTokenResponse {
   bool active = 1;
-  string user_id = 2;
+  string account_id = 2;
   string session_id = 3;
   int64 expires_at_unix = 4;
 }
 
-message GetUserIDByTokenRequest {
+message GetAccountIDByTokenRequest {
   string access_token = 1;
 }
 
-message UserIDResponse {
+message AccountIDResponse {
   bool active = 1;
-  string user_id = 2;
+  string account_id = 2;
 }

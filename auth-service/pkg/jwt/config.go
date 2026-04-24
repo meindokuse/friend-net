@@ -8,12 +8,12 @@ import (
 var ErrInvalidConfig = errors.New("jwt: invalid config")
 
 type Config struct {
-    SecretKey       string        `yaml:"secret_key"`        // мин 32 символа
-    RefreshSecret   string        `yaml:"refresh_secret"`    // отдельный секрет для HMAC refresh
-    Issuer          string        `yaml:"issuer"`
-    AccessTTL       time.Duration `yaml:"access_ttl"`        // 15m
-    RefreshTTL      time.Duration `yaml:"refresh_ttl"`       // 30d
-    GracePeriod     time.Duration `yaml:"grace_period"`      // 30s
+	SecretKey     string        `yaml:"secretKey"     env:"JWT_SECRET"         env-required:"true"`
+	RefreshSecret string        `yaml:"refreshSecret" env:"JWT_REFRESH_SECRET" env-required:"true"`
+	Issuer        string        `yaml:"issuer"        env:"JWT_ISSUER"         env-default:"auth-service"`
+	AccessTTL     time.Duration `yaml:"accessTTL"     env-default:"15m"`
+	RefreshTTL    time.Duration `yaml:"refreshTTL"    env-default:"720h"`
+	GracePeriod   time.Duration `yaml:"gracePeriod"   env-default:"30s"`
 }
 
 func (c Config) Validate() error {

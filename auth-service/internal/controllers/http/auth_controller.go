@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	"github.com/meindokuse/cloud-drive/auth-service/internal/dto"
 	usecase "github.com/meindokuse/cloud-drive/auth-service/internal/usecase/auth"
 	sharedlogger "github.com/meindokuse/cloud-drive/auth-service/pkg/logger"
@@ -28,9 +28,9 @@ type AuthUseCase interface {
 }
 
 type ControllerConfig struct {
-	CookieDomain      string
-	CookieSecure      bool
-	RefreshCookieName string
+	CookieDomain      string `yaml:"cookieDomain"      env:"COOKIE_DOMAIN"`
+	CookieSecure      bool   `yaml:"cookieSecure"      env:"COOKIE_SECURE"       env-default:"false"`
+	RefreshCookieName string `yaml:"refreshCookieName" env:"REFRESH_COOKIE_NAME" env-default:"refresh_token"`
 }
 
 type AuthController struct {
@@ -146,7 +146,7 @@ func (c *AuthController) LogoutAll(ctx *gin.Context) {
 		return
 	}
 
-	if err := c.useCase.LogoutAll(ctx.Request.Context(), authInfo.UserID); err != nil {
+	if err := c.useCase.LogoutAll(ctx.Request.Context(), authInfo.AccountID); err != nil {
 		c.respondWithError(ctx, err)
 		return
 	}
@@ -161,7 +161,7 @@ func (c *AuthController) Sessions(ctx *gin.Context) {
 		return
 	}
 
-	sessions, err := c.useCase.GetUserSessions(ctx.Request.Context(), authInfo.UserID, authInfo.SessionID)
+	sessions, err := c.useCase.GetUserSessions(ctx.Request.Context(), authInfo.AccountID, authInfo.SessionID)
 	if err != nil {
 		c.respondWithError(ctx, err)
 		return
@@ -182,7 +182,7 @@ func (c *AuthController) RevokeSession(ctx *gin.Context) {
 		return
 	}
 
-	if err := c.useCase.RevokeSession(ctx.Request.Context(), authInfo.UserID, sessionID); err != nil {
+	if err := c.useCase.RevokeSession(ctx.Request.Context(), authInfo.AccountID, sessionID); err != nil {
 		c.respondWithError(ctx, err)
 		return
 	}
@@ -213,7 +213,7 @@ func (c *AuthController) Introspect(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"active":     true,
-		"user_id":    info.UserID,
+		"account_id": info.AccountID,
 		"session_id": info.SessionID,
 		"expires_at": info.ExpiresAt,
 	})
@@ -302,7 +302,7 @@ func (c *AuthController) respondWithTokenPair(ctx *gin.Context, statusCode int, 
 		"expires_in":         tokens.ExpiresIn,
 		"expires_at":         tokens.ExpiresAt,
 		"refresh_expires_at": tokens.RefreshExpiresAt,
-		"user_id":            tokens.UserID,
+		"account_id":         tokens.AccountID,
 	})
 }
 

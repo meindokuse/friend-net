@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
+	domainaccount "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	domainsession "github.com/meindokuse/cloud-drive/auth-service/internal/domain/session"
-	domainuser "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/pass"
 )
 
 type DB interface {
-	Save(ctx context.Context, userData domainuser.User) (string, error)
-	FindUser(ctx context.Context, loginData domainuser.Login) (*domainuser.User, error)
-	FindUserByID(ctx context.Context, userID string) (*domainuser.User, error)
+	Save(ctx context.Context, accountData domainaccount.Account) (string, error)
+	FindAccount(ctx context.Context, loginData domainaccount.Login) (*domainaccount.Account, error)
+	FindAccountByID(ctx context.Context, accountID string) (*domainaccount.Account, error)
 }
 
 type Redis interface {

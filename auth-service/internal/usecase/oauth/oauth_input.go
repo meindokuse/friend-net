@@ -3,7 +3,7 @@ package oauth
 import (
 	"time"
 
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 )
 
 type OAuthCallbackInput struct {
@@ -16,15 +16,15 @@ type OAuthCallbackInput struct {
 
 // OAuthLinkInput — привязка аккаунта (для уже залогиненного пользователя)
 type OAuthLinkInput struct {
-	Provider      domain.OAuthProvider
-	Code          string
-	State         string
-	CurrentUserID string // ID текущего залогиненного пользователя (из сессии)
+	Provider         domain.OAuthProvider
+	Code             string
+	State            string
+	CurrentAccountID string // ID текущего залогиненного аккаунта (из сессии)
 }
 
 // OAuthOutput — результат OAuth входа/привязки
 type OAuthOutput struct {
-	UserID           string
+	AccountID        string
 	Email            string
 	AccessToken      string // Наш JWT access token
 	RefreshToken     string // Ключ сессии, обычно уходит в cookie

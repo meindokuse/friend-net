@@ -20,7 +20,7 @@
 | Entry point | `cmd/server` | Поднимает HTTP-сервер, DI, middleware, маршруты |
 | Controllers | `internal/controllers/http` | HTTP-обвязка: парсинг/валидация входа, маппинг ошибок/ответов |
 | Usecase | `internal/usecase/auth`, `internal/usecase/oauth` | Бизнес-правила auth и OAuth |
-| Domain | `internal/domain/user`, `internal/domain/session` | Доменные сущности и контракты данных |
+| Domain | `internal/domain/account`, `internal/domain/session` | Доменные сущности и контракты данных |
 | Adapters | `internal/adapters/postgresql`, `internal/adapters/redis` | Реализации репозиториев/хранилищ |
 | Infra | `internal/infra` | Интеграции со внешними провайдерами (Google OAuth) |
 | Shared pkg | `pkg/*` | JWT, парольный хешер, логгер, клиенты Postgres/Redis |
@@ -141,7 +141,7 @@ curl http://localhost:8080/healthz
 | `expires_in` | number | TTL access в секундах |
 | `expires_at` | datetime | Время истечения access |
 | `refresh_expires_at` | datetime | Время истечения refresh |
-| `user_id` | string | ID пользователя |
+| `account_id` | string | ID пользователя |
 
 ---
 
@@ -151,10 +151,10 @@ curl http://localhost:8080/healthz
 
 | Таблица | Назначение |
 |---|---|
-| `users` | Локальные пользователи |
+| `accounts` | Локальные пользователи |
 | `oauth_accounts` | Привязки OAuth-провайдеров к пользователям |
 
-#### `users`
+#### `accounts`
 
 | Поле | Тип | Комментарий |
 |---|---|---|
@@ -170,7 +170,7 @@ curl http://localhost:8080/healthz
 | Поле | Тип | Комментарий |
 |---|---|---|
 | `id` | UUID PK | ID записи |
-| `user_id` | UUID FK -> users.id | Владелец |
+| `account_id` | UUID FK -> accounts.id | Владелец |
 | `provider` | TEXT | `google` и т.д. |
 | `provider_id` | TEXT | ID пользователя у провайдера |
 | `email` | TEXT | email от провайдера |
@@ -183,7 +183,7 @@ curl http://localhost:8080/healthz
 
 | Ключ | Тип | Что хранится |
 |---|---|---|
-| `session:{sid}` | Hash | Статус сессии, user_id, fingerprint hash, IP, UA, даты |
+| `session:{sid}` | Hash | Статус сессии, account_id, fingerprint hash, IP, UA, даты |
 | `refresh:{sid}` | Hash | `current`/`prev` hash refresh-token (rotation) |
 | `user_sessions:{uid}` | Set | Список session id пользователя |
 | `blacklist:{jti}` | String + TTL | Отозванные access token jti |
@@ -237,7 +237,7 @@ curl http://localhost:8080/healthz
 - проверяет blacklist по `jti` в Redis.
 4. Ответ:
 - `{"active": false}` если токен невалиден;
-- `{"active": true, "user_id": "...", "session_id": "...", "expires_at": ...}` если валиден.
+- `{"active": true, "account_id": "...", "session_id": "...", "expires_at": ...}` если валиден.
 
 Это ключевой E2E-флоу интеграции auth-service с API Gateway/другими микросервисами.
 
@@ -252,7 +252,7 @@ curl http://localhost:8080/healthz
 
 #### Logout всех устройств
 1. `POST /auth/logout-all` с Bearer access.
-2. Через introspection получаем `user_id`.
+2. Через introspection получаем `account_id`.
 3. Redis-адаптер ревокает все session id из `user_sessions:{uid}`.
 
 #### Список устройств
@@ -299,7 +299,7 @@ curl http://localhost:8080/healthz
 
 `proto/auth.proto` описывает gRPC-контракт:
 - `ValidateToken`
-- `GetUserIDByToken`
+- `GetAccountIDByToken`
 
 На текущий момент в рантайме поднят HTTP API (gRPC-сервер не поднят в `main.go`), но proto уже готов как контракт для следующего этапа.
 
@@ -331,7 +331,7 @@ curl http://localhost:8080/healthz
 
 ## 11. Известные ограничения и что учесть
 
-1. Для `link/google` сейчас ожидается `user_id` в `gin.Context`, но отдельный auth middleware-инжектор user-id в роуты link пока не подключён.
+1. Для `link/google` сейчас ожидается `account_id` в `gin.Context`, но отдельный auth middleware-инжектор user-id в роуты link пока не подключён.
 2. `state` для OAuth сейчас генерируется, но полноценная серверная валидация state (хранение в Redis + TTL + single-use) отмечена как TODO.
 3. Есть `proto`-контракт, но gRPC-сервер ещё не включён в runtime (HTTP уже рабочий).
 

@@ -18,10 +18,10 @@ type GoogleService struct {
 }
 
 type GoogleServiceConfig struct {
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string	 	`yaml:"redirectURL"`
-	Scopes       []string	`yaml:"scopes"`
+	ClientID     string   `yaml:"clientID"     env:"GOOGLE_CLIENT_ID"     env-required:"true"`
+	ClientSecret string   `yaml:"clientSecret" env:"GOOGLE_CLIENT_SECRET" env-required:"true"`
+	RedirectURL  string   `yaml:"redirectURL"  env:"GOOGLE_REDIRECT_URL"`
+	Scopes       []string `yaml:"scopes"`
 }
 
 func NewGoogleService(cfg GoogleServiceConfig) *GoogleService {

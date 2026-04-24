@@ -29,7 +29,7 @@ import (
 func main() {
 	sharedlogger.Init()
 
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
@@ -56,13 +56,13 @@ func main() {
 	slog.InfoContext(context.Background(), "jwt manager initialized", slog.String("issuer", cfg.JWT.Issuer))
 
 	googleProvider := googleinfra.NewGoogleService(cfg.OAuth.Google)
-	userRepo := postgresqladapter.NewUserRepo(db)
+	accountRepo := postgresqladapter.NewAccountRepo(db)
 	oauthRepo := postgresqladapter.NewOAuthRepo(db)
 	sessionRepo := redisadapter.NewManager(redisClient, cfg.JWT.RefreshTTL)
 	hasher := pass.New(cfg.Pass)
 
-	authUC := usecase.NewAuth(userRepo, sessionRepo, hasher, jwtManager)
-	oauthUC := oauthusecase.NewOAuthUseCase(userRepo, oauthRepo, sessionRepo, jwtManager, cfg.JWT.RefreshTTL)
+	authUC := usecase.NewAuth(accountRepo, sessionRepo, hasher, jwtManager)
+	oauthUC := oauthusecase.NewOAuthUseCase(accountRepo, oauthRepo, sessionRepo, jwtManager, cfg.JWT.RefreshTTL)
 	oauthUC.RegisterProvider("google", googleProvider)
 
 	corsConfig := config.DefaultCORSConfig()

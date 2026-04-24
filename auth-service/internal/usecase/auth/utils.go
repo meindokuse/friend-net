@@ -6,24 +6,24 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	domainsession "github.com/meindokuse/cloud-drive/auth-service/internal/domain/session"
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
 )
 
 func (a *Auth) createSessionAndTokens(
 	ctx context.Context,
-	userID, fingerprintHash, ip, ua string,
+	accountID, fingerprintHash, ip, ua string,
 ) (*domain.AuthResult, error) {
 	sessionID := uuid.NewString()
 
 	// Сессия
-	session := domainsession.NewSession(sessionID, userID, fingerprintHash, ip, ua, a.jwtManager.RefreshTTL())
+	session := domainsession.NewSession(sessionID, accountID, fingerprintHash, ip, ua, a.jwtManager.RefreshTTL())
 	if err := a.redis.CreateSession(ctx, session); err != nil {
 		return nil, fmt.Errorf("auth: create session: %w", err)
 	}
 
 	// Access JWT
-	accessToken, err := a.jwtManager.GenerateAccessToken(sessionID, userID)
+	accessToken, err := a.jwtManager.GenerateAccessToken(sessionID, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("auth: access token: %w", err)
 	}
@@ -50,7 +50,7 @@ func (a *Auth) createSessionAndTokens(
 		ExpiresIn:        int64(a.jwtManager.AccessTTL().Seconds()),
 		ExpiresAt:        time.Now().UTC().Add(a.jwtManager.AccessTTL()),
 		RefreshExpiresAt: time.Now().UTC().Add(a.jwtManager.RefreshTTL()),
-		UserID:           userID,
+		AccountID:        accountID,
 	}, nil
 }
 
@@ -78,7 +78,7 @@ func (a *Auth) rotateTokens(
 	_ = a.redis.UpdateLastSeen(ctx, session.ID)
 
 	// Новый access
-	accessToken, err := a.jwtManager.GenerateAccessToken(session.ID, session.UserID)
+	accessToken, err := a.jwtManager.GenerateAccessToken(session.ID, session.AccountID)
 	if err != nil {
 		return nil, fmt.Errorf("auth: access token: %w", err)
 	}
@@ -90,7 +90,7 @@ func (a *Auth) rotateTokens(
 		ExpiresIn:        int64(a.jwtManager.AccessTTL().Seconds()),
 		ExpiresAt:        time.Now().UTC().Add(a.jwtManager.AccessTTL()),
 		RefreshExpiresAt: time.Now().UTC().Add(a.jwtManager.RefreshTTL()),
-		UserID:           session.UserID,
+		AccountID:        session.AccountID,
 	}, nil
 }
 
@@ -119,7 +119,7 @@ func (a *Auth) rotateTokensGrace(
 
 	_ = a.redis.UpdateLastSeen(ctx, session.ID)
 
-	accessToken, err := a.jwtManager.GenerateAccessToken(session.ID, session.UserID)
+	accessToken, err := a.jwtManager.GenerateAccessToken(session.ID, session.AccountID)
 	if err != nil {
 		return nil, fmt.Errorf("auth: access token: %w", err)
 	}
@@ -131,7 +131,7 @@ func (a *Auth) rotateTokensGrace(
 		ExpiresIn:        int64(a.jwtManager.AccessTTL().Seconds()),
 		ExpiresAt:        time.Now().UTC().Add(a.jwtManager.AccessTTL()),
 		RefreshExpiresAt: time.Now().UTC().Add(a.jwtManager.RefreshTTL()),
-		UserID:           session.UserID,
+		AccountID:        session.AccountID,
 	}, nil
 }
 

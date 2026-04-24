@@ -59,6 +59,9 @@ services:
     container_name: auth-service-app
     env_file:
       - .env
+    environment:
+      CONFIG_PATH: /app/auth-service/config/config.yaml
+      APP_ENV: local
     depends_on:
       postgres:
         condition: service_healthy

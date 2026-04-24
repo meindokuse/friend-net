@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	"github.com/meindokuse/cloud-drive/auth-service/internal/usecase/oauth"
 	sharedlogger "github.com/meindokuse/cloud-drive/auth-service/pkg/logger"
 )
@@ -84,18 +84,18 @@ func (c *OAuthController) GoogleCallback(ctx *gin.Context) {
 		"access_token":       output.AccessToken,
 		"refresh_token":      output.RefreshToken,
 		"token_type":         output.TokenType,
-		"user_id":            output.UserID,
+		"account_id":         output.AccountID,
 		"is_new_user":        output.IsNewUser,
 		"expires_at":         output.ExpiresAt,
 		"refresh_expires_at": output.RefreshExpiresAt,
 	})
-	slog.InfoContext(reqCtx, "oauth google callback completed", slog.String("user_id", output.UserID))
+	slog.InfoContext(reqCtx, "oauth google callback completed", slog.String("account_id", output.AccountID))
 }
 
 // /auth/link/google — привязка аккаунта (для уже залогиненного)
 func (c *OAuthController) LinkGoogle(ctx *gin.Context) {
-	// Получаем userID из JWT (из middleware)
-	_ = ctx.GetString("user_id")
+	// Получаем accountID из JWT (из middleware)
+	_ = ctx.GetString("account_id")
 
 	state := generateRandomState()
 	// Сохранить state...
@@ -108,20 +108,20 @@ func (c *OAuthController) LinkGoogle(ctx *gin.Context) {
 
 // /auth/link/google/callback — callback для Link
 func (c *OAuthController) LinkGoogleCallback(ctx *gin.Context) {
-	userID := ctx.GetString("user_id")
+	userID := ctx.GetString("account_id")
 	code := ctx.Query("code")
 	state := ctx.Query("state")
 
 	input := oauth.OAuthLinkInput{
-		Provider:      domain.OAuthGoogle,
-		Code:          code,
-		State:         state,
-		CurrentUserID: userID,
+		Provider:         domain.OAuthGoogle,
+		Code:             code,
+		State:            state,
+		CurrentAccountID: userID,
 	}
 
 	reqCtx := sharedlogger.WithFields(ctx.Request.Context(), map[string]interface{}{
-		"provider": string(domain.OAuthGoogle),
-		"user_id":  userID,
+		"provider":   string(domain.OAuthGoogle),
+		"account_id": userID,
 	})
 
 	err := c.useCase.LinkAccount(reqCtx, input)

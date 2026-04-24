@@ -9,20 +9,20 @@ import (
 
 	"github.com/google/uuid"
 	postgresqlerrors "github.com/meindokuse/cloud-drive/auth-service/internal/adapters/postgresql"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	domainsession "github.com/meindokuse/cloud-drive/auth-service/internal/domain/session"
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/jwt"
 	sharedlogger "github.com/meindokuse/cloud-drive/auth-service/pkg/logger"
 )
 
-type UserRepository interface {
-	Save(ctx context.Context, userData domain.User) (string, error)
-	FindUser(ctx context.Context, loginData domain.Login) (*domain.User, error)
+type AccountRepository interface {
+	Save(ctx context.Context, accountData domain.Account) (string, error)
+	FindAccount(ctx context.Context, loginData domain.Login) (*domain.Account, error)
 }
 
 type OAuthRepository interface {
 	GetByProviderID(ctx context.Context, provider domain.OAuthProvider, providerID string) (*domain.OAuthAccount, error)
-	GetByUserID(ctx context.Context, userID string) ([]*domain.OAuthAccount, error)
+	GetByAccountID(ctx context.Context, accountID string) ([]*domain.OAuthAccount, error)
 	Create(ctx context.Context, account *domain.OAuthAccount) error
 	UpdateTokens(ctx context.Context, accountID, accessToken, refreshToken string, expiry time.Time) error
 	Delete(ctx context.Context, accountID string) error
@@ -36,13 +36,13 @@ type SessionRepository interface {
 type OAuthUseCase interface {
 	Login(ctx context.Context, input OAuthCallbackInput) (*OAuthOutput, error)
 	LinkAccount(ctx context.Context, input OAuthLinkInput) error
-	UnlinkAccount(ctx context.Context, userID string, provider domain.OAuthProvider) error
-	GetLinkedAccounts(ctx context.Context, userID string) ([]*domain.OAuthAccount, error)
+	UnlinkAccount(ctx context.Context, accountID string, provider domain.OAuthProvider) error
+	GetLinkedAccounts(ctx context.Context, accountID string) ([]*domain.OAuthAccount, error)
 	RegisterProvider(provider domain.OAuthProvider, svc OAuthProviderService)
 }
 
 type oauthUseCase struct {
-	userRepo       UserRepository
+	accountRepo    AccountRepository
 	oauthRepo      OAuthRepository
 	sessionRepo    SessionRepository
 	jwtSvc         *jwt.Manager
@@ -51,14 +51,14 @@ type oauthUseCase struct {
 }
 
 func NewOAuthUseCase(
-	userRepo UserRepository,
+	accountRepo AccountRepository,
 	oauthRepo OAuthRepository,
 	sessionRepo SessionRepository,
 	jwtSvc *jwt.Manager,
 	sessionTTL time.Duration,
 ) OAuthUseCase {
 	return &oauthUseCase{
-		userRepo:       userRepo,
+		accountRepo:    accountRepo,
 		oauthRepo:      oauthRepo,
 		sessionRepo:    sessionRepo,
 		jwtSvc:         jwtSvc,
@@ -110,27 +110,27 @@ func (uc *oauthUseCase) Login(ctx context.Context, input OAuthCallbackInput) (*O
 		return nil, fmt.Errorf("get oauth account: %w", err)
 	}
 
-	var userID string
+	var accountID string
 	isNewUser := false
 
 	switch {
 	case existingOAuth != nil:
-		userID = existingOAuth.UserID
-		ctx = sharedlogger.WithField(ctx, "user_id", userID)
+		accountID = existingOAuth.AccountID
+		ctx = sharedlogger.WithField(ctx, "account_id", accountID)
 		slog.InfoContext(ctx, "oauth account found for provider user")
 		if err := uc.oauthRepo.UpdateTokens(ctx, existingOAuth.ID, oauthTokens.AccessToken, oauthTokens.RefreshToken, oauthTokens.Expiry); err != nil {
 			slog.ErrorContext(ctx, "oauth token update failed", slog.String("error", err.Error()))
 			return nil, fmt.Errorf("update oauth tokens: %w", err)
 		}
 	default:
-		user, err := uc.userRepo.FindUser(ctx, domain.Login{Email: userInfo.Email})
+		account, err := uc.accountRepo.FindAccount(ctx, domain.Login{Email: userInfo.Email})
 		switch {
-		case err == nil && user != nil:
-			userID = user.ID
-			ctx = sharedlogger.WithField(ctx, "user_id", userID)
+		case err == nil && account != nil:
+			accountID = account.ID
+			ctx = sharedlogger.WithField(ctx, "account_id", accountID)
 			slog.InfoContext(ctx, "oauth matched existing local user by email")
 
-			oauthAccount := domain.NewOAuthAccount(userID, input.Provider, userInfo.ProviderID, userInfo.Email)
+			oauthAccount := domain.NewOAuthAccount(accountID, input.Provider, userInfo.ProviderID, userInfo.Email)
 			oauthAccount.AccessToken = oauthTokens.AccessToken
 			oauthAccount.RefreshToken = oauthTokens.RefreshToken
 			oauthAccount.Expiry = oauthTokens.Expiry
@@ -140,12 +140,12 @@ func (uc *oauthUseCase) Login(ctx context.Context, input OAuthCallbackInput) (*O
 				return nil, fmt.Errorf("create oauth account: %w", err)
 			}
 		case isUserNotFound(err):
-			userID, err = uc.createOAuthUser(ctx, userInfo, input.Provider, oauthTokens)
+			accountID, err = uc.createOAuthAccount(ctx, userInfo, input.Provider, oauthTokens)
 			if err != nil {
 				return nil, err
 			}
 			isNewUser = true
-			ctx = sharedlogger.WithField(ctx, "user_id", userID)
+			ctx = sharedlogger.WithField(ctx, "account_id", accountID)
 			slog.InfoContext(ctx, "oauth created new local user")
 		default:
 			slog.ErrorContext(ctx, "oauth local user lookup failed", slog.String("error", err.Error()))
@@ -153,7 +153,7 @@ func (uc *oauthUseCase) Login(ctx context.Context, input OAuthCallbackInput) (*O
 		}
 	}
 
-	output, err := uc.createSessionForUser(ctx, userID, userInfo.Email, input.RequestData)
+	output, err := uc.createSessionForAccount(ctx, accountID, userInfo.Email, input.RequestData)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func (uc *oauthUseCase) Login(ctx context.Context, input OAuthCallbackInput) (*O
 
 func (uc *oauthUseCase) LinkAccount(ctx context.Context, input OAuthLinkInput) error {
 	ctx = sharedlogger.WithFields(ctx, map[string]interface{}{
-		"provider": string(input.Provider),
-		"user_id":  input.CurrentUserID,
+		"provider":   string(input.Provider),
+		"account_id": input.CurrentAccountID,
 	})
 	slog.InfoContext(ctx, "oauth link started")
 
@@ -205,7 +205,7 @@ func (uc *oauthUseCase) LinkAccount(ctx context.Context, input OAuthLinkInput) e
 		return errors.New("this account is already linked")
 	}
 
-	existingAccounts, err := uc.oauthRepo.GetByUserID(ctx, input.CurrentUserID)
+	existingAccounts, err := uc.oauthRepo.GetByAccountID(ctx, input.CurrentAccountID)
 	if err != nil {
 		slog.ErrorContext(ctx, "oauth link current user linked accounts lookup failed", slog.String("error", err.Error()))
 		return fmt.Errorf("get linked accounts: %w", err)
@@ -217,7 +217,7 @@ func (uc *oauthUseCase) LinkAccount(ctx context.Context, input OAuthLinkInput) e
 		}
 	}
 
-	oauthAccount := domain.NewOAuthAccount(input.CurrentUserID, input.Provider, userInfo.ProviderID, userInfo.Email)
+	oauthAccount := domain.NewOAuthAccount(input.CurrentAccountID, input.Provider, userInfo.ProviderID, userInfo.Email)
 	oauthAccount.AccessToken = oauthTokens.AccessToken
 	oauthAccount.RefreshToken = oauthTokens.RefreshToken
 	oauthAccount.Expiry = oauthTokens.Expiry
@@ -233,12 +233,12 @@ func (uc *oauthUseCase) LinkAccount(ctx context.Context, input OAuthLinkInput) e
 
 func (uc *oauthUseCase) UnlinkAccount(ctx context.Context, userID string, provider domain.OAuthProvider) error {
 	ctx = sharedlogger.WithFields(ctx, map[string]interface{}{
-		"user_id":  userID,
-		"provider": string(provider),
+		"account_id": userID,
+		"provider":   string(provider),
 	})
 	slog.InfoContext(ctx, "oauth unlink started")
 
-	accounts, err := uc.oauthRepo.GetByUserID(ctx, userID)
+	accounts, err := uc.oauthRepo.GetByAccountID(ctx, userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "oauth unlink linked accounts lookup failed", slog.String("error", err.Error()))
 		return fmt.Errorf("get linked accounts: %w", err)
@@ -267,10 +267,10 @@ func (uc *oauthUseCase) UnlinkAccount(ctx context.Context, userID string, provid
 }
 
 func (uc *oauthUseCase) GetLinkedAccounts(ctx context.Context, userID string) ([]*domain.OAuthAccount, error) {
-	ctx = sharedlogger.WithField(ctx, "user_id", userID)
+	ctx = sharedlogger.WithField(ctx, "account_id", userID)
 	slog.InfoContext(ctx, "oauth get linked accounts started")
 
-	accounts, err := uc.oauthRepo.GetByUserID(ctx, userID)
+	accounts, err := uc.oauthRepo.GetByAccountID(ctx, userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "oauth get linked accounts failed", slog.String("error", err.Error()))
 		return nil, err
@@ -280,7 +280,7 @@ func (uc *oauthUseCase) GetLinkedAccounts(ctx context.Context, userID string) ([
 	return accounts, nil
 }
 
-func (uc *oauthUseCase) createOAuthUser(
+func (uc *oauthUseCase) createOAuthAccount(
 	ctx context.Context,
 	userInfo *OAuthUserInfo,
 	provider domain.OAuthProvider,
@@ -293,18 +293,18 @@ func (uc *oauthUseCase) createOAuthUser(
 	})
 	slog.InfoContext(ctx, "oauth user creation started")
 
-	user := domain.NewUser(userInfo.Email, "")
-	user.ID = uuid.NewString()
+	account := domain.NewAccount(userInfo.Email, "")
+	account.ID = uuid.NewString()
 
-	userID, err := uc.userRepo.Save(ctx, *user)
+	accountID, err := uc.accountRepo.Save(ctx, *account)
 	if err != nil {
 		slog.ErrorContext(ctx, "oauth local user creation failed", slog.String("error", err.Error()))
 		return "", fmt.Errorf("create oauth user: %w", err)
 	}
 
-	ctx = sharedlogger.WithField(ctx, "user_id", userID)
+	ctx = sharedlogger.WithField(ctx, "account_id", accountID)
 
-	oauthAccount := domain.NewOAuthAccount(userID, provider, userInfo.ProviderID, userInfo.Email)
+	oauthAccount := domain.NewOAuthAccount(accountID, provider, userInfo.ProviderID, userInfo.Email)
 	oauthAccount.AccessToken = oauthTokens.AccessToken
 	oauthAccount.RefreshToken = oauthTokens.RefreshToken
 	oauthAccount.Expiry = oauthTokens.Expiry
@@ -315,23 +315,23 @@ func (uc *oauthUseCase) createOAuthUser(
 	}
 
 	slog.InfoContext(ctx, "oauth user creation completed")
-	return userID, nil
+	return accountID, nil
 }
 
-func (uc *oauthUseCase) createSessionForUser(
+func (uc *oauthUseCase) createSessionForAccount(
 	ctx context.Context,
-	userID, email string,
+	accountID, email string,
 	requestData domain.RequestData,
 ) (*OAuthOutput, error) {
 	ctx = sharedlogger.WithFields(ctx, map[string]interface{}{
-		"user_id": userID,
-		"email":   email,
+		"account_id": accountID,
+		"email":      email,
 	})
 	slog.InfoContext(ctx, "oauth session creation started")
 
 	sessionID := uuid.NewString()
 
-	accessToken, err := uc.jwtSvc.GenerateAccessToken(sessionID, userID)
+	accessToken, err := uc.jwtSvc.GenerateAccessToken(sessionID, accountID)
 	if err != nil {
 		slog.ErrorContext(ctx, "oauth jwt token generation failed", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("generate access token: %w", err)
@@ -345,7 +345,7 @@ func (uc *oauthUseCase) createSessionForUser(
 
 	session := domainsession.NewSession(
 		sessionID,
-		userID,
+		accountID,
 		uc.jwtSvc.HashFingerprint(requestData.Fingerprint),
 		requestData.IPAddress,
 		requestData.UserAgent,
@@ -371,7 +371,7 @@ func (uc *oauthUseCase) createSessionForUser(
 
 	slog.InfoContext(ctx, "oauth session creation completed")
 	return &OAuthOutput{
-		UserID:           userID,
+		AccountID:        accountID,
 		Email:            email,
 		AccessToken:      accessToken,
 		RefreshToken:     refreshToken,

@@ -3,7 +3,7 @@ package pass
 import "golang.org/x/crypto/bcrypt"
 
 type Config struct {
-	Cost int
+	Cost int `yaml:"cost" env:"PASS_COST" env-default:"10"`
 }
 
 func (c Config) costOrDefault() int {

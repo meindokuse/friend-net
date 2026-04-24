@@ -2,15 +2,16 @@ package redis
 
 import "time"
 
+
 type Config struct {
-	Addr         string
-	Username     string
-	Password     string
-	DB           int
-	DialTimeout  time.Duration
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	PoolSize     int
+	Addr         string        `yaml:"addr"         env:"REDIS_ADDR"      env-default:"localhost:6379"`
+	Username     string        `yaml:"username"     env:"REDIS_USERNAME"`
+	Password     string        `yaml:"password"     env:"REDIS_PASSWORD"`
+	DB           int           `yaml:"db"           env:"REDIS_DB"        env-default:"0"`
+	DialTimeout  time.Duration `yaml:"dialTimeout"  env-default:"5s"`
+	ReadTimeout  time.Duration `yaml:"readTimeout"  env-default:"3s"`
+	WriteTimeout time.Duration `yaml:"writeTimeout" env-default:"3s"`
+	PoolSize     int           `yaml:"poolSize"     env-default:"10"`
 }
 
 func (c Config) withDefaults() Config {

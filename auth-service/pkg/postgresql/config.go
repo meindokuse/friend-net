@@ -7,16 +7,16 @@ import (
 )
 
 type Config struct {
-	Host            string
-	Port            int
-	User            string
-	Password        string
-	Database        string
-	SSLMode         string
-	Params          map[string]string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxLifetime time.Duration
+	Host            string            `yaml:"host"            env:"POSTGRES_HOST"      env-default:"localhost"`
+	Port            int               `yaml:"port"            env:"POSTGRES_PORT"      env-default:"5432"`
+	User            string            `yaml:"user"            env:"POSTGRES_USER"      env-default:"postgres"`
+	Password        string            `yaml:"password"        env:"POSTGRES_PASSWORD"  env-required:"true"`
+	Database        string            `yaml:"database"        env:"POSTGRES_DB"        env-required:"true"`
+	SSLMode         string            `yaml:"sslMode"         env:"POSTGRES_SSLMODE"   env-default:"disable"`
+	Params          map[string]string `yaml:"params"`
+	MaxOpenConns    int               `yaml:"maxOpenConns"    env-default:"25"`
+	MaxIdleConns    int               `yaml:"maxIdleConns"    env-default:"5"`
+	ConnMaxLifetime time.Duration     `yaml:"connMaxLifetime" env-default:"5m"`
 }
 
 func (c Config) addr() string {

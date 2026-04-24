@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	sharedlogger "github.com/meindokuse/cloud-drive/auth-service/pkg/logger"
 )
 
@@ -32,7 +32,7 @@ func (r *OAuthRepository) GetByProviderID(ctx context.Context, provider domain.O
 	const query = `
 		SELECT
 			id,
-			user_id,
+			account_id,
 			provider,
 			provider_id,
 			email,
@@ -57,17 +57,17 @@ func (r *OAuthRepository) GetByProviderID(ctx context.Context, provider domain.O
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseRead, err)
 	}
 
-	slog.InfoContext(sharedlogger.WithField(ctx, "user_id", account.UserID), "postgres oauth account loaded by provider id")
+	slog.InfoContext(sharedlogger.WithField(ctx, "account_id", account.AccountID), "postgres oauth account loaded by provider id")
 	return account, nil
 }
 
-func (r *OAuthRepository) GetByUserID(ctx context.Context, userID string) ([]*domain.OAuthAccount, error) {
-	ctx = sharedlogger.WithField(ctx, "user_id", userID)
+func (r *OAuthRepository) GetByAccountID(ctx context.Context, userID string) ([]*domain.OAuthAccount, error) {
+	ctx = sharedlogger.WithField(ctx, "account_id", userID)
 
 	const query = `
 		SELECT
 			id,
-			user_id,
+			account_id,
 			provider,
 			provider_id,
 			email,
@@ -77,7 +77,7 @@ func (r *OAuthRepository) GetByUserID(ctx context.Context, userID string) ([]*do
 			created_at,
 			updated_at
 		FROM oauth_accounts
-		WHERE user_id = $1
+		WHERE account_id = $1
 		ORDER BY created_at ASC
 	`
 
@@ -109,7 +109,7 @@ func (r *OAuthRepository) GetByUserID(ctx context.Context, userID string) ([]*do
 
 func (r *OAuthRepository) Create(ctx context.Context, account *domain.OAuthAccount) error {
 	ctx = sharedlogger.WithFields(ctx, map[string]interface{}{
-		"user_id":     account.UserID,
+		"account_id":  account.AccountID,
 		"provider":    string(account.Provider),
 		"provider_id": account.ProviderID,
 		"email":       account.Email,
@@ -118,7 +118,7 @@ func (r *OAuthRepository) Create(ctx context.Context, account *domain.OAuthAccou
 	const query = `
 		INSERT INTO oauth_accounts (
 			id,
-			user_id,
+			account_id,
 			provider,
 			provider_id,
 			email,
@@ -141,7 +141,7 @@ func (r *OAuthRepository) Create(ctx context.Context, account *domain.OAuthAccou
 
 	_, err := r.db.ExecContext(ctx, query,
 		account.ID,
-		account.UserID,
+		account.AccountID,
 		account.Provider,
 		account.ProviderID,
 		account.Email,
@@ -213,7 +213,7 @@ func scanOAuthAccount(scanner oauthAccountScanner) (*domain.OAuthAccount, error)
 
 	err := scanner.Scan(
 		&account.ID,
-		&account.UserID,
+		&account.AccountID,
 		&provider,
 		&account.ProviderID,
 		&account.Email,

@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 )
 
 func (a *Auth) ValidateAccessToken(ctx context.Context, accessToken string) (*domain.AccessTokenInfo, error) {
@@ -21,7 +21,7 @@ func (a *Auth) ValidateAccessToken(ctx context.Context, accessToken string) (*do
 	}
 
 	return &domain.AccessTokenInfo{
-		UserID:    claims.Subject,
+		AccountID: claims.Subject,
 		SessionID: claims.SessionID,
 		JTI:       claims.ID,
 		ExpiresAt: claims.ExpiresAt.Time,

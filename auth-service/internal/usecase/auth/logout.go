@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/user"
+	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 )
 
 func (a *Auth) Logout(ctx context.Context, input domain.LogoutInput) error {
 	sessionID := input.SessionID
-	userID := ""
+	accountID := ""
 
 	if sessionID == "" && input.RefreshToken != "" {
 		parsedSessionID, _, err := a.jwtManager.ParseRefreshToken(input.RefreshToken)
@@ -24,7 +24,7 @@ func (a *Auth) Logout(ctx context.Context, input domain.LogoutInput) error {
 			if sessionID == "" {
 				sessionID = accessSessionID
 			}
-			userID = accessUserID
+			accountID = accessUserID
 		}
 	}
 
@@ -32,15 +32,15 @@ func (a *Auth) Logout(ctx context.Context, input domain.LogoutInput) error {
 		return ErrInvalidToken
 	}
 
-	if userID == "" {
+	if accountID == "" {
 		session, err := a.redis.GetSession(ctx, sessionID)
 		if err != nil {
 			return nil
 		}
-		userID = session.UserID
+		accountID = session.AccountID
 	}
 
-	if err := a.redis.RevokeSession(ctx, sessionID, userID); err != nil {
+	if err := a.redis.RevokeSession(ctx, sessionID, accountID); err != nil {
 		return fmt.Errorf("auth: revoke: %w", err)
 	}
 
