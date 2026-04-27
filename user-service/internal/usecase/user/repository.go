@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	domainuser "github.com/meindokuse/cloud-drive/user-service/internal/domain/user"
 	"github.com/meindokuse/cloud-drive/user-service/internal/domain/shared/vo"
+	domainuser "github.com/meindokuse/cloud-drive/user-service/internal/domain/user"
 )
 
 // UserRepository — контракт хранилища пользователей.
@@ -29,5 +29,6 @@ type UserRepository interface {
 	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*domainuser.User, error)
 
 	Search(ctx context.Context, query string, limit, offset int) ([]*domainuser.User, error)
+	List(ctx context.Context, params domainuser.ListParams) ([]*domainuser.User, domainuser.PagedUsers, error)
 	UpdateLastSeen(ctx context.Context, id uuid.UUID) error
 }

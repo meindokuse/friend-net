@@ -101,8 +101,10 @@ func (r *UserRepository) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*doma
 	return users, nil
 }
 
-// Search ищет пользователей по query (username или display_name). Не возвращает soft-deleted.
-func (r *UserRepository) Search(ctx context.Context, query string, limit, offset int) ([]*domainuser.User, error) {
+// List возвращает страницу пользователей с keyset-пагинацией по (username, _id).
+// Не возвращает soft-deleted.
+func (r *UserRepository) List(ctx context.Context, params domainuser.ListParams) ([]*domainuser.User, domainuser.PagedUsers, error) {
+	limit := params.Limit
 	if limit <= 0 {
 		limit = 20
 	}
@@ -110,38 +112,66 @@ func (r *UserRepository) Search(ctx context.Context, query string, limit, offset
 		limit = 100
 	}
 
-	filter := activeFilter(bson.M{
-		"$or": []bson.M{
-			{"username": bson.M{"$regex": query, "$options": "i"}},
-			{"profile.display_name": bson.M{"$regex": query, "$options": "i"}},
-		},
-	})
+	filter := activeFilter(bson.M{})
+	if params.Cursor != nil {
+		filter = activeFilter(bson.M{
+			"$or": []bson.M{
+				{"username": bson.M{"$gt": params.Cursor.Username}},
+				{
+					"$and": []bson.M{
+						{"username": params.Cursor.Username},
+						{"_id": bson.M{"$gt": params.Cursor.ID}},
+					},
+				},
+			},
+		})
+	}
 
 	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.D{{Key: "username", Value: 1}})
+		SetSort(bson.D{
+			{Key: "username", Value: 1},
+			{Key: "_id", Value: 1},
+		}).
+		SetLimit(int64(limit + 1)) // +1 чтобы определить hasMore
 
-	cursor, err := r.collection.Find(ctx, filter, opts)
+	cur, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
-		return nil, err
+		return nil, domainuser.PagedUsers{}, err
 	}
-	defer cursor.Close(ctx)
+	defer cur.Close(ctx)
 
 	var docs []userDocument
-	if err := cursor.All(ctx, &docs); err != nil {
-		return nil, err
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, domainuser.PagedUsers{}, err
+	}
+
+	hasMore := len(docs) > limit
+	if hasMore {
+		docs = docs[:limit]
 	}
 
 	users := make([]*domainuser.User, 0, len(docs))
 	for i := range docs {
 		u, err := fromDocument(&docs[i])
 		if err != nil {
-			return nil, err
+			return nil, domainuser.PagedUsers{}, err
 		}
 		users = append(users, u)
 	}
-	return users, nil
+
+	paged := domainuser.PagedUsers{
+		Items:   users,
+		HasMore: hasMore,
+	}
+	if hasMore && len(docs) > 0 {
+		last := docs[len(docs)-1]
+		paged.NextCursor = domainuser.UsernameCursor{
+			Username: last.Username,
+			ID:       last.ID,
+		}
+	}
+
+	return users, paged, nil
 }
 
 // UpdateLastSeen обновляет last_seen_at без изменения version. Не работает с soft-deleted.
