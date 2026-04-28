@@ -10,14 +10,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
-	"github.com/gin-contrib/cors"
 	postgresqladapter "github.com/meindokuse/cloud-drive/auth-service/internal/adapters/postgresql"
 	redisadapter "github.com/meindokuse/cloud-drive/auth-service/internal/adapters/redis"
 	"github.com/meindokuse/cloud-drive/auth-service/internal/config"
 	httpcontrollers "github.com/meindokuse/cloud-drive/auth-service/internal/controllers/http"
 	googleinfra "github.com/meindokuse/cloud-drive/auth-service/internal/infra"
+	"github.com/meindokuse/cloud-drive/auth-service/internal/pkg/postgres"
 	usecase "github.com/meindokuse/cloud-drive/auth-service/internal/usecase/auth"
 	oauthusecase "github.com/meindokuse/cloud-drive/auth-service/internal/usecase/oauth"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/jwt"
@@ -35,11 +36,26 @@ func main() {
 	}
 	slog.InfoContext(context.Background(), "config loaded", slog.String("http_addr", cfg.Server.HTTPAddr))
 
-	db, err := cfg.Postgres.Open()
-	if err != nil {
-		log.Fatalf("open postgres: %v", err)
+	// Создаём PostgreSQL pool
+	pgConfig := postgres.Config{
+		Host:            cfg.Postgres.Host,
+		Port:            cfg.Postgres.Port,
+		User:            cfg.Postgres.User,
+		Password:        cfg.Postgres.Password,
+		Database:        cfg.Postgres.Database,
+		SSLMode:         cfg.Postgres.SSLMode,
+		MaxConns:        25,
+		MinConns:        5,
+		MaxConnLifetime: 5 * time.Minute,
+		MaxConnIdleTime: 1 * time.Minute,
+		ConnectTimeout:  10 * time.Second,
 	}
-	defer db.Close()
+
+	pool, err := postgres.NewPool(context.Background(), pgConfig)
+	if err != nil {
+		log.Fatalf("create postgres pool: %v", err)
+	}
+	defer pool.Close()
 	slog.InfoContext(context.Background(), "postgres connected", slog.String("host", cfg.Postgres.Host), slog.Int("port", cfg.Postgres.Port), slog.String("database", cfg.Postgres.Database))
 
 	redisClient, err := redispkg.NewClient(cfg.Redis)
@@ -56,13 +72,13 @@ func main() {
 	slog.InfoContext(context.Background(), "jwt manager initialized", slog.String("issuer", cfg.JWT.Issuer))
 
 	googleProvider := googleinfra.NewGoogleService(cfg.OAuth.Google)
-	accountRepo := postgresqladapter.NewAccountRepo(db)
-	oauthRepo := postgresqladapter.NewOAuthRepo(db)
+	accountRepo := postgresqladapter.NewAuthRepository(pool)
+	oauthRepo := postgresqladapter.NewOAuthRepo(pool)
 	sessionRepo := redisadapter.NewManager(redisClient, cfg.JWT.RefreshTTL)
 	hasher := pass.New(cfg.Pass)
 
 	authUC := usecase.NewAuth(accountRepo, sessionRepo, hasher, jwtManager)
-	oauthUC := oauthusecase.NewOAuthUseCase(accountRepo, oauthRepo, sessionRepo, jwtManager, cfg.JWT.RefreshTTL)
+	oauthUC := oauthusecase.NewOAuth(accountRepo, oauthRepo, sessionRepo, jwtManager, cfg.JWT.RefreshTTL)
 	oauthUC.RegisterProvider("google", googleProvider)
 
 	corsConfig := config.DefaultCORSConfig()

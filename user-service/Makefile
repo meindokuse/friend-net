@@ -1,46 +1,55 @@
-.PHONY: help deps test test-unit test-integration lint fmt docker-up docker-down clean
+.PHONY: build run test clean docker-build docker-run tidy
 
-help: ## Показать помощь
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+# Build the service
+build:
+	go build -o bin/user-service.exe ./cmd/main.go
 
-deps: ## Установить зависимости
-	go mod download
+# Run the service
+run:
+	go run ./cmd/main.go
+
+# Run tests
+test:
+	go test -v ./...
+
+# Run tests with coverage
+test-coverage:
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+
+# Clean build artifacts
+clean:
+	rm -rf bin/
+	rm -f coverage.out coverage.html
+
+# Tidy dependencies
+tidy:
 	go mod tidy
 
-test: ## Запустить все тесты
-	go test -v -race -coverprofile=coverage.out ./...
+# Build Docker image
+docker-build:
+	docker build -t user-service:latest .
 
-test-unit: ## Запустить только unit тесты
-	go test -v -race ./internal/domain/...
+# Run Docker container
+docker-run:
+	docker run -p 8081:8081 --env-file .env user-service:latest
 
-test-integration: docker-up ## Запустить integration тесты
-	@echo "Waiting for MongoDB to be ready..."
-	@sleep 3
-	go test -v -race ./internal/adapters/mongo/...
+# Run MongoDB for local development
+mongo-up:
+	docker run -d -p 27017:27017 --name mongo mongo:latest
 
-lint: ## Запустить линтер
-	golangci-lint run ./...
+# Stop MongoDB
+mongo-down:
+	docker stop mongo && docker rm mongo
 
-fmt: ## Форматировать код
+# Format code
+fmt:
 	go fmt ./...
-	goimports -w .
 
-docker-up: ## Запустить MongoDB
-	docker-compose up -d
-	@echo "MongoDB running on localhost:27017"
-	@echo "Mongo Express UI: http://localhost:8081"
+# Lint code (requires golangci-lint)
+lint:
+	golangci-lint run
 
-docker-down: ## Остановить MongoDB
-	docker-compose down
-
-docker-clean: ## Удалить MongoDB с данными
-	docker-compose down -v
-
-clean: ## Очистить артефакты
-	rm -f coverage.out
-	go clean -testcache
-
-coverage: test ## Показать покрытие тестами
-	go tool cover -html=coverage.out
-
-.DEFAULT_GOAL := help
+# Run all checks before commit
+pre-commit: fmt tidy test
+	@echo "All checks passed!"

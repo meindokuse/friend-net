@@ -1,31 +1,72 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:7
+  # MongoDB
+  mongo:
+    image: mongo:latest
     container_name: user-service-mongo
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: user_service
     volumes:
       - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    environment:
+      - MONGO_INITDB_DATABASE=user_service
+    networks:
+      - user-service-network
 
-  mongo-express:
-    image: mongo-express:latest
-    container_name: user-service-mongo-express
+  # Kafka (requires Zookeeper)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: user-service-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - user-service-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: user-service-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - user-service-network
+
+  # User Service
+  user-service:
+    build:
+      context: ..
+      dockerfile: user-service/Dockerfile
+    container_name: user-service
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/
-      ME_CONFIG_BASICAUTH: false
+      - APP_ENV=docker
+      - HTTP_ADDR=:8081
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DATABASE=user_service
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=accounts.events
+      - KAFKA_GROUP_ID=user-service
+      - KAFKA_ENABLED=true
+      - LOG_LEVEL=info
     depends_on:
-      - mongodb
+      - mongo
+      - kafka
+    networks:
+      - user-service-network
 
 volumes:
   mongo_data:
+
+networks:
+  user-service-network:
+    driver: bridge

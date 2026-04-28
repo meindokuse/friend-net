@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
+	"github.com/meindokuse/cloud-drive/auth-service/internal/pkg/outbox"
 	sharedlogger "github.com/meindokuse/cloud-drive/auth-service/pkg/logger"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/pass"
 )
@@ -40,17 +41,31 @@ func (uc *Auth) Register(ctx context.Context, registerData domain.Register) (str
 		return "", fmt.Errorf("%w: hash password: %v", ErrInternal, err)
 	}
 
-	account := domain.NewAccount(registerData.Email, passwordHash)
+	account, err := domain.NewAccount(registerData.Email, passwordHash)
+	if err != nil {
+		slog.ErrorContext(ctx, "register create account failed", slog.String("error", err.Error()))
+		return "", fmt.Errorf("%w: create account: %v", ErrInternal, err)
+	}
 
-	accountID, err := uc.db.Save(ctx, *account)
+	outboxEvent, err := outbox.NewAccountCreatedEvent(
+		account.ID,
+		account.Email,
+		registerData.DisplayName,
+		account.CreatedAt,
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "register create outbox event failed", slog.String("error", err.Error()))
+		return "", fmt.Errorf("%w: create outbox: %v", ErrInternal, err)
+	}
+
+	accountID, err := uc.db.SaveWithOutbox(ctx, account, outboxEvent)
 	if err != nil {
 		slog.WarnContext(ctx, "register user save failed", slog.String("error", err.Error()))
 		return "", mapPostgresError(err)
 	}
 
-	account.ID = accountID
-	ctx = sharedlogger.WithField(ctx, "account_id", account.ID)
+	ctx = sharedlogger.WithField(ctx, "account_id", accountID)
 
 	slog.InfoContext(ctx, "register usecase completed")
-	return accountID, nil
+	return accountID.String(), nil
 }

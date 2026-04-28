@@ -6,19 +6,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	rderr "github.com/meindokuse/cloud-drive/auth-service/internal/adapters/redis"
 	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	domainsession "github.com/meindokuse/cloud-drive/auth-service/internal/domain/session"
+	"github.com/meindokuse/cloud-drive/auth-service/internal/pkg/outbox"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/jwt"
 )
 
 type tokenTestDB struct{}
 
-func (tokenTestDB) Save(context.Context, domain.Account) (string, error) { return "", nil }
+func (tokenTestDB) SaveWithOutbox(context.Context, *domain.Account, *outbox.OutboxEvent) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
 func (tokenTestDB) FindAccount(context.Context, domain.Login) (*domain.Account, error) {
 	return nil, nil
 }
-func (tokenTestDB) FindAccountByID(context.Context, string) (*domain.Account, error) {
+func (tokenTestDB) FindAccountByID(context.Context, uuid.UUID) (*domain.Account, error) {
 	return nil, nil
 }
 

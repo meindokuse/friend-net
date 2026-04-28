@@ -189,3 +189,52 @@ func (r *UserRepository) UpdateLastSeen(ctx context.Context, id uuid.UUID) error
 	}
 	return nil
 }
+
+// Search ищет пользователей по подстроке в username или display_name.
+// Не возвращает soft-deleted.
+func (r *UserRepository) Search(ctx context.Context, query string, limit, offset int) ([]*domainuser.User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Поиск по username или display_name (case-insensitive)
+	filter := activeFilter(bson.M{
+		"$or": []bson.M{
+			{"username": bson.M{"$regex": query, "$options": "i"}},
+			{"display_name": bson.M{"$regex": query, "$options": "i"}},
+		},
+	})
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "username", Value: 1}}).
+		SetLimit(int64(limit)).
+		SetSkip(int64(offset))
+
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var docs []userDocument
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+
+	users := make([]*domainuser.User, 0, len(docs))
+	for i := range docs {
+		u, err := fromDocument(&docs[i])
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+
+	return users, nil
+}

@@ -11,31 +11,32 @@ import (
 	rderr "github.com/meindokuse/cloud-drive/auth-service/internal/adapters/redis"
 	domain "github.com/meindokuse/cloud-drive/auth-service/internal/domain/account"
 	domainsession "github.com/meindokuse/cloud-drive/auth-service/internal/domain/session"
+	"github.com/meindokuse/cloud-drive/auth-service/internal/pkg/outbox"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service/pkg/pass"
 )
 
 type fakeAccountDB struct {
 	byEmail map[string]domain.Account
-	byID    map[string]domain.Account
+	byID    map[uuid.UUID]domain.Account
 }
 
 func newFakeAccountDB() *fakeAccountDB {
 	return &fakeAccountDB{
 		byEmail: make(map[string]domain.Account),
-		byID:    make(map[string]domain.Account),
+		byID:    make(map[uuid.UUID]domain.Account),
 	}
 }
 
-func (f *fakeAccountDB) Save(_ context.Context, accountData domain.Account) (string, error) {
+func (f *fakeAccountDB) SaveWithOutbox(_ context.Context, accountData *domain.Account, _ *outbox.OutboxEvent) (uuid.UUID, error) {
 	if _, exists := f.byEmail[accountData.Email]; exists {
-		return "", pgerr.ErrUserAlreadyExists
+		return uuid.Nil, pgerr.ErrUserAlreadyExists
 	}
-	if accountData.ID == "" {
-		accountData.ID = uuid.NewString()
+	if accountData.ID == uuid.Nil {
+		accountData.ID = uuid.New()
 	}
-	f.byEmail[accountData.Email] = accountData
-	f.byID[accountData.ID] = accountData
+	f.byEmail[accountData.Email] = *accountData
+	f.byID[accountData.ID] = *accountData
 	return accountData.ID, nil
 }
 
@@ -48,7 +49,7 @@ func (f *fakeAccountDB) FindAccount(_ context.Context, loginData domain.Login) (
 	return &out, nil
 }
 
-func (f *fakeAccountDB) FindAccountByID(_ context.Context, accountID string) (*domain.Account, error) {
+func (f *fakeAccountDB) FindAccountByID(_ context.Context, accountID uuid.UUID) (*domain.Account, error) {
 	acc, ok := f.byID[accountID]
 	if !ok {
 		return nil, pgerr.ErrNoRows
@@ -203,8 +204,9 @@ func TestAuthFlowIntegration_RegisterLoginRefreshLogout(t *testing.T) {
 	ctx := context.Background()
 
 	accountID, err := uc.Register(ctx, domain.Register{
-		Email:    "account@example.com",
-		Password: "StrongPass123",
+		Email:       "account@example.com",
+		Password:    "StrongPass123",
+		DisplayName: "Test User",
 	})
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
@@ -267,8 +269,9 @@ func TestAuthFlowIntegration_RefreshFingerprintMismatch(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := uc.Register(ctx, domain.Register{
-		Email:    "fp@example.com",
-		Password: "StrongPass123",
+		Email:       "fp@example.com",
+		Password:    "StrongPass123",
+		DisplayName: "Test User",
 	}); err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}

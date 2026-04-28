@@ -1,179 +1,163 @@
 # User Service
 
-Микросервис управления пользователями для социальной сети. Реализует Domain-Driven Design с чистой архитектурой.
+Микросервис управления пользователями для cloud-drive проекта.
 
 ## Архитектура
 
-```
-user-service/
-├── internal/
-│   ├── domain/           # Доменная модель (entities, value objects, events)
-│   │   ├── user/         # User aggregate
-│   │   └── shared/       # Общие VO (Username, Email, Phone)
-│   ├── usecase/          # Бизнес-логика (use cases)
-│   │   └── user/         # User use cases + repository interface
-│   └── adapters/         # Внешние адаптеры
-│       └── mongo/        # MongoDB реализация репозитория
-└── cmd/                  # Entry points (TODO)
-```
+- **Domain Layer**: Бизнес-логика, Value Objects, агрегаты
+- **Usecase Layer**: Сценарии использования, контракты репозиториев
+- **Adapters**: MongoDB репозиторий
+- **Controllers**: HTTP handlers (chi router) + Kafka consumer
+- **DTO**: Модели запросов/ответов для HTTP API
 
-## Технологии
+## Основные возможности
 
-- **Go 1.25**
-- **MongoDB** — основное хранилище
-- **DDD** — Domain-Driven Design
-- **Clean Architecture** — зависимости направлены внутрь
+### HTTP API
 
-## Особенности реализации
+- **POST /users** - Создание пользователя
+- **GET /users/{id}** - Получение пользователя по ID
+- **GET /users/username/{username}** - Получение по username
+- **POST /users/batch** - Batch получение по списку ID
+- **GET /users/search?q=query** - Поиск пользователей
 
-### Domain Model
+#### Authenticated endpoints (требуют auth middleware)
 
-- **User** — корневой агрегат с инкапсулированным состоянием
-- **Value Objects**: Username, Email, Phone с валидацией
-- **Optimistic Locking** через поле `version`
-- **Soft Delete** — пользователи не удаляются физически
-- **Domain Events**: UserCreated, UserProfileUpdated, UserDeleted
+- **GET /users/me** - Получение текущего пользователя
+- **PATCH /users/me/profile** - Обновление профиля
+- **PATCH /users/me/settings** - Обновление настроек
+- **PATCH /users/me/email** - Смена email
+- **PATCH /users/me/phone** - Смена телефона
+- **DELETE /users/me** - Soft-delete пользователя
+- **POST /users/me/last-seen** - Обновление last_seen_at
+- **GET /users/me/list?cursor=...&limit=...** - Keyset пагинация
 
-### Repository Pattern
+### Kafka Consumer
 
-Интерфейс `UserRepository` определён в usecase слое (Dependency Inversion):
+Слушает топик `accounts.events` и обрабатывает события:
 
-```go
-type UserRepository interface {
-    Create(ctx context.Context, u *User) error
-    Update(ctx context.Context, u *User) error
-    GetByID(ctx context.Context, id uuid.UUID) (*User, error)
-    GetByUsername(ctx context.Context, username Username) (*User, error)
-    GetByEmail(ctx context.Context, email Email) (*User, error)
-    GetByPhone(ctx context.Context, phone Phone) (*User, error)
-    GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*User, error)
-    Search(ctx context.Context, query string, limit, offset int) ([]*User, error)
-    UpdateLastSeen(ctx context.Context, id uuid.UUID) error
-}
-```
+- **AccountCreated** - Создаёт User с тем же ID что и Account (идемпотентно)
 
-### MongoDB Schema
+## Конфигурация
 
-```javascript
-{
-  _id: UUID,
-  username: String (unique, lowercase),
-  email: String (unique, sparse),
-  phone: String (unique, sparse, E.164 format),
-  profile: {
-    display_name: String,
-    bio: String?,
-    avatar_url: String?
-  },
-  settings: {
-    privacy: {
-      who_can_message: "everyone" | "friends" | "nobody",
-      who_can_see_last_seen: "everyone" | "friends" | "nobody",
-      who_can_see_profile: "everyone" | "friends" | "nobody"
-    },
-    language: String,
-    timezone: String
-  },
-  verification: {
-    email_verified: Boolean,
-    phone_verified: Boolean
-  },
-  is_active: Boolean,
-  created_at: ISODate,
-  updated_at: ISODate,
-  last_seen_at: ISODate?,
-  deleted_at: ISODate?,
-  version: Int
-}
-```
-
-### Индексы
-
-- `username` — unique
-- `email` — unique, sparse
-- `phone` — unique, sparse
-- `deleted_at` — для фильтрации удалённых
-- Text index на `username` + `profile.display_name` для поиска
-
-## Локальная разработка
-
-### Запуск MongoDB
-
-```bash
-docker-compose up -d
-```
-
-### Установка зависимостей
-
-```bash
-go mod download
-```
-
-### Запуск тестов
-
-```bash
-# Unit + Integration тесты (требуется MongoDB на localhost:27017)
-go test ./internal/adapters/mongo/... -v
-
-# Только unit тесты domain
-go test ./internal/domain/... -v
-```
-
-### Переменные окружения
+### Переменные окружения (.env)
 
 ```env
+# Application
+APP_ENV=local
+
+# HTTP Server
+HTTP_ADDR=:8081
+SHUTDOWN_TIMEOUT=10s
+
+# MongoDB
 MONGO_URI=mongodb://localhost:27017
 MONGO_DATABASE=user_service
 MONGO_TIMEOUT=10s
+
+# Kafka
+KAFKA_BROKERS=localhost:9092
+KAFKA_TOPIC=accounts.events
+KAFKA_GROUP_ID=user-service
+KAFKA_ENABLED=true
+
+# Logging
+LOG_LEVEL=info
 ```
 
-## Use Cases (TODO)
+### YAML конфигурация (config/config.yaml)
 
-- [x] Domain model
-- [x] Repository interface
-- [x] MongoDB adapter
-- [ ] CreateUser use case
-- [ ] UpdateProfile use case
-- [ ] UpdateSettings use case
-- [ ] ChangeEmail use case
-- [ ] ChangePhone use case
-- [ ] SoftDelete use case
-- [ ] GetUser use case
-- [ ] SearchUsers use case
-- [ ] BatchGetUsers use case
-- [ ] UpdateLastSeen use case
+Используется для локальной разработки. В production все настройки берутся из ENV.
 
-## API Endpoints (TODO)
+## Запуск
 
-```
-POST   /users              — создать пользователя
-GET    /users/:id          — получить профиль
-PATCH  /users/me           — обновить свой профиль
-GET    /users/search?q=    — поиск пользователей
-POST   /users/:id/block    — заблокировать
-GET    /users/me/blocked   — список заблокированных
+### Локально
+
+1. Запустите MongoDB:
+```bash
+docker run -d -p 27017:27017 --name mongo mongo:latest
 ```
 
-## События (Kafka)
+2. Запустите Kafka (опционально):
+```bash
+docker-compose up -d kafka
+```
 
-- `user.created` — новый пользователь зарегистрирован
-- `user.profile.updated` — профиль обновлён
-- `user.deleted` — пользователь удалён (soft delete)
+3. Скопируйте .env.example в .env и настройте:
+```bash
+cp .env.example .env
+```
 
-## Мониторинг (TODO)
+4. Запустите сервис:
+```bash
+go run cmd/main.go
+```
 
-- Health check: `/health`
-- Readiness: `/ready`
-- Metrics: `/metrics` (Prometheus)
+Или соберите бинарник:
+```bash
+go build -o bin/user-service.exe ./cmd/main.go
+./bin/user-service.exe
+```
 
-## Production Checklist
+### Docker
 
-- [ ] Graceful shutdown
-- [ ] Structured logging (JSON)
-- [ ] Distributed tracing (OpenTelemetry)
-- [ ] Circuit breaker для MongoDB
-- [ ] Rate limiting
-- [ ] Request ID propagation
-- [ ] MongoDB connection pooling
-- [ ] Backup strategy
-- [ ] Monitoring & alerting
+```bash
+docker build -t user-service .
+docker run -p 8081:8081 --env-file .env user-service
+```
+
+## Зависимости
+
+- **MongoDB** - основная БД
+- **Kafka** - event streaming (опционально, можно отключить через `KAFKA_ENABLED=false`)
+- **common module** - общие события (AccountCreated)
+
+## Особенности реализации
+
+### Soft Delete
+
+Все операции чтения автоматически фильтруют soft-deleted пользователей (`deleted_at != nil`).
+
+### Optimistic Locking
+
+Update операции используют `version` поле для предотвращения race conditions. При конфликте возвращается `ErrVersionConflict`.
+
+### Keyset Pagination
+
+List endpoint использует keyset пагинацию по `(username, _id)` для стабильной и эффективной пагинации больших датасетов.
+
+### Idempotency
+
+Kafka consumer обрабатывает дубликаты событий идемпотентно:
+- Если User с таким ID уже существует → игнорируем (успешная обработка)
+- Используем `User.ID = Account.ID` для гарантии идемпотентности
+
+### Error Handling
+
+Трёхуровневая система ошибок:
+1. **Domain errors** (`domain/user/errors.go`) - бизнес-логика
+2. **Usecase errors** (`usecase/user/errors.go`) - сценарии использования
+3. **Adapter errors** - MongoDB драйвер → domain errors
+
+## Тестирование
+
+```bash
+# Запустить все тесты
+go test ./...
+
+# Тесты MongoDB (требуют запущенный MongoDB)
+go test ./internal/adapters/mongo/...
+
+# Тесты с verbose
+go test -v ./...
+```
+
+## Документация
+
+Подробная документация по domain модели, usecase и DTO находится в [DOCUMENTATION.md](./DOCUMENTATION.md).
+
+## Graceful Shutdown
+
+Сервис корректно завершает работу при получении SIGINT/SIGTERM:
+1. Останавливает HTTP server (с таймаутом из `SHUTDOWN_TIMEOUT`)
+2. Останавливает Kafka consumer
+3. Закрывает соединение с MongoDB

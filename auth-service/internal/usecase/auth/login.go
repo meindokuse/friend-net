@@ -35,18 +35,18 @@ func (uc *Auth) LoginUser(ctx context.Context, input domain.LoginInput) (*domain
 	}
 
 	// 3. Проверяем лимит сессий
-	count, err := uc.redis.CountUserSessions(ctx, account.ID)
+	count, err := uc.redis.CountUserSessions(ctx, account.ID.String())
 	if err != nil {
 		return nil, fmt.Errorf("auth: count sessions: %w", err)
 	}
 	if count >= MaxSessionsPerUser {
 		// Стратегия: убиваем самую старую
-		if err := uc.evictOldestSession(ctx, account.ID); err != nil {
+		if err := uc.evictOldestSession(ctx, account.ID.String()); err != nil {
 			return nil, fmt.Errorf("auth: evict session: %w", err)
 		}
 	}
 
 	slog.InfoContext(ctx, "login usecase completed")
 	fingerprintHash := uc.jwtManager.HashFingerprint(input.Fingerprint)
-	return uc.createSessionAndTokens(ctx, account.ID, fingerprintHash, input.IP, input.UserAgent)
+	return uc.createSessionAndTokens(ctx, account.ID.String(), fingerprintHash, input.IP, input.UserAgent)
 }

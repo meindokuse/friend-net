@@ -29,13 +29,13 @@ type UpdateProfileInput struct {
 }
 
 type UpdateSettingsInput struct {
-	UserID                uuid.UUID
-	WhoCanMessage         string
-	WhoCanSeeLastSeen     string
-	WhoCanSeeProfile      string
-	Language              string
-	Timezone              string
-	Version               int
+	UserID            uuid.UUID
+	WhoCanMessage     string
+	WhoCanSeeLastSeen string
+	WhoCanSeeProfile  string
+	Language          string
+	Timezone          string
+	Version           int
 }
 
 type ChangeEmailInput struct {
