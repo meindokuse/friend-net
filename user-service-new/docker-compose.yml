@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  user-service-new:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - APP_ENV=local
+      - HTTP_ADDR=:8081
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DATABASE=user_service
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=accounts.events
+      - KAFKA_GROUP_ID=user-service
+      - KAFKA_ENABLED=true
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - user-network
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - user-network
+
+networks:
+  user-network:
+    driver: bridge

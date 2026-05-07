@@ -1,0 +1,67 @@
+env: "local"
+
+server:
+  httpAddr: ":8080"
+  shutdownTimeout: "10s"
+
+controller:
+  cookieDomain: ""
+  cookieSecure: false
+  refreshCookieName: "refresh_token"
+
+postgres:
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  database: "auth_service"
+  sslMode: "disable"
+  maxConns: 25
+  minConns: 5
+  maxConnLifetime: "5m"
+  maxConnIdleTime: "1m"
+  connectTimeout: "10s"
+
+redis:
+  addr: "redis:6379"
+  db: 0
+  dialTimeout: "5s"
+  readTimeout: "3s"
+  writeTimeout: "3s"
+  poolSize: 10
+
+jwt:
+  secretKey: "your-secret-key-must-be-at-least-32-characters-long"
+  refreshSecret: "your-refresh-secret-key-must-be-at-least-32-characters-long"
+  issuer: "auth-service"
+  accessTTL: "15m"
+  refreshTTL: "720h"
+  gracePeriod: "30s"
+
+pass:
+  cost: 10
+
+oauth:
+  google:
+    redirectURL: "http://localhost:8080/auth/google/callback"
+    scopes:
+      - "openid"
+      - "email"
+      - "profile"
+
+kafka:
+  enabled: false
+  brokers:
+    - "localhost:9092"
+  topic: "accounts.events"
+  consumerGroup: "auth-service-flusher"
+
+outbox:
+  flushEnabled: false
+  flushInterval: "5s"
+  batchSize: 100
+  lockTimeout: "30s"
+  retryAttempts: 3
+  retryDelay: "1s"
+
+graceful:
+  timeout: "10s"

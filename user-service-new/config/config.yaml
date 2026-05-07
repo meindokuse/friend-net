@@ -1,0 +1,24 @@
+env: "local"
+
+server:
+  httpAddr: ":8081"
+  shutdownTimeout: "10s"
+
+mongo:
+  uri: "mongodb://localhost:27017"
+  database: "user_service"
+  timeout: "10s"
+
+kafka:
+  enabled: true
+  brokers:
+    - "localhost:9092"
+  topic: "accounts.events"
+  groupId: "user-service"
+  maxWait: "500ms"
+
+logger:
+  level: "info"
+
+graceful:
+  timeout: "10s"
