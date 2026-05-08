@@ -6,10 +6,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	authlogin "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/login"
-	authrefresh "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/refresh"
-	authregister "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/register"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
+	authlogin "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth/login"
+	authrefresh "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth/refresh"
+	authregister "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth/register"
 )
 
 // Login handles POST /auth/login

@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /auth-service-new ./cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /auth-service ./cmd
 
 # Runtime stage
 FROM alpine:3.19
@@ -25,7 +25,7 @@ WORKDIR /app
 RUN apk --no-cache add ca-certificates tzdata
 
 # Copy binary from builder
-COPY --from=builder /auth-service-new /app/auth-service-new
+COPY --from=builder /auth-service /app/auth-service-new
 COPY --from=builder /app/config/config.yaml /app/config/config.yaml
 
 # Create non-root user

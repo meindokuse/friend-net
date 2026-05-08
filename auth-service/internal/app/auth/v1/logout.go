@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	logout "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth"
+	logout "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth"
 )
 
 // Logout handles POST /auth/logout

@@ -16,10 +16,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
-	authv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/auth/v1"
-	oauthv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/oauth/v1"
-	authservice "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth"
-	oauthservice "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/login"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/flusher"
@@ -28,10 +24,13 @@ import (
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/closer"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/connector/postgres"
-	redisconn "github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/connector/redis"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/pass"
-	"github.com/redis/go-redis/v9"
+	authv1 "github.com/meindokuse/cloud-drive/auth-service/internal/app/auth/v1"
+	oauthv1 "github.com/meindokuse/cloud-drive/auth-service/internal/app/oauth/v1"
+	authservice "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth"
+	oauthservice "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/oauth"
+	redisconn "github.com/meindokuse/cloud-drive/auth-service/internal/pkg/connector/redis"
 )
 
 // App is the main application structure
@@ -70,7 +69,7 @@ func (a *App) Run(ctx context.Context) {
 
 	// Start HTTP server
 	go func() {
-		slog.InfoContext(ctx, "auth-service-new starting", "http_addr", a.cfg.Server.HTTPAddr)
+		slog.InfoContext(ctx, "auth-service starting", "http_addr", a.cfg.Server.HTTPAddr)
 		if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.ErrorContext(ctx, "http server error", "error", err)
 			os.Exit(1)
@@ -103,7 +102,7 @@ func (a *App) Run(ctx context.Context) {
 	}
 	c.CloseAll()
 
-	slog.InfoContext(ctx, "auth-service-new stopped")
+	slog.InfoContext(ctx, "auth-service stopped")
 }
 
 func (a *App) init(ctx context.Context) error {
@@ -356,4 +355,3 @@ func (a *oauthProviderAdapter) GetUserInfo(ctx context.Context, accessToken stri
 		AvatarURL:  info.AvatarURL,
 	}, nil
 }
-

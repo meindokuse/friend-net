@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
-	oauthlink "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/link"
-	oauthlogin "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/login"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/gateway/oauth"
+	oauthlink "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/oauth/link"
+	oauthlogin "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/oauth/login"
 )
 
 const (

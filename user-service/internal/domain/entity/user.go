@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	vo "github.com/meindokuse/cloud-drive/user-service-new/internal/domain/valueobject"
+	vo "github.com/meindokuse/cloud-drive/user-service/internal/domain/valueobject"
 )
 
 var (
@@ -158,9 +158,17 @@ func (u *User) SoftDelete() error {
 	u.touch()
 	return nil
 }
-func (u *User) ChangeEmail(email vo.Email) { u.email = &email; u.verification.EmailVerified = false; u.touch() }
-func (u *User) ChangePhone(phone vo.Phone) { u.phone = &phone; u.verification.PhoneVerified = false; u.touch() }
-func (u *User) touch()                     { u.updatedAt = time.Now().UTC(); u.version++ }
+func (u *User) ChangeEmail(email vo.Email) {
+	u.email = &email
+	u.verification.EmailVerified = false
+	u.touch()
+}
+func (u *User) ChangePhone(phone vo.Phone) {
+	u.phone = &phone
+	u.verification.PhoneVerified = false
+	u.touch()
+}
+func (u *User) touch() { u.updatedAt = time.Now().UTC(); u.version++ }
 
 type UsernameCursor struct {
 	Username string

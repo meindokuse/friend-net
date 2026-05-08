@@ -9,13 +9,13 @@ import (
 	"syscall"
 
 	"github.com/meindokuse/cloud-drive/user-service-new/config"
-	userv1 "github.com/meindokuse/cloud-drive/user-service-new/internal/app/user/v1"
-	userservice "github.com/meindokuse/cloud-drive/user-service-new/internal/application/service/user"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/messagebus"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/processor"
-	userstorage "github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/storage/user"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/closer"
-	mongoconn "github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/connector/mongo"
+	userv1 "github.com/meindokuse/cloud-drive/user-service/internal/app/user/v1"
+	userservice "github.com/meindokuse/cloud-drive/user-service/internal/application/service/user"
+	userstorage "github.com/meindokuse/cloud-drive/user-service/internal/infrastructure/storage/user"
+	mongoconn "github.com/meindokuse/cloud-drive/user-service/internal/pkg/connector/mongo"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -41,7 +41,7 @@ func (a *App) Run(ctx context.Context) {
 		go a.consumer.Start(ctx)
 	}
 	go func() {
-		slog.InfoContext(ctx, "user-service-new starting", "http_addr", a.cfg.Server.HTTPAddr)
+		slog.InfoContext(ctx, "user-service starting", "http_addr", a.cfg.Server.HTTPAddr)
 		if err := a.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.ErrorContext(ctx, "http server error", "error", err)
 			os.Exit(1)
