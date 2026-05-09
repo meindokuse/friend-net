@@ -1,6 +1,8 @@
 package messagebus
 
 import (
+	"context"
+
 	"github.com/IBM/sarama"
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
 )
@@ -36,7 +38,7 @@ func NewProducer(cfg config.KafkaConfig) *Producer {
 }
 
 // Close closes the producer
-func (p *Producer) Close() error {
+func (p *Producer) Close(_ context.Context) error {
 	if p.producer == nil {
 		return nil
 	}

@@ -6,13 +6,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/providers"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
 )
 
-// AccountProvider interface for account operations
-type AccountProvider interface {
+// AuthRepository interface for account operations
+type AuthRepository interface {
 	FindByEmail(ctx context.Context, email string) (*entity.Account, error)
 	CreateWithOutbox(ctx context.Context, account *entity.Account, outbox *entity.OutboxEvent) error
 }
@@ -35,45 +36,25 @@ type OutboxRepository interface {
 	Create(ctx context.Context, event *entity.OutboxEvent) error
 }
 
-// OAuthProviderGateway interface for OAuth provider operations
-type OAuthProviderGateway interface {
-	ExchangeToken(ctx context.Context, code string) (*OAuthToken, error)
-	GetUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error)
-}
-
-// OAuthToken represents OAuth tokens
-type OAuthToken struct {
-	AccessToken  string
-	RefreshToken string
-	Expiry       int64
-}
-
-// OAuthUserInfo represents user info from OAuth provider
-type OAuthUserInfo struct {
-	ProviderID string
-	Email      string
-	Name       string
-	AvatarURL  string
-}
 
 // Service handles OAuth login
 type Service struct {
-	accounts  AccountProvider
+	accounts  AuthRepository
 	oauth     OAuthRepository
 	sessions  SessionManager
 	outbox    OutboxRepository
-	providers map[entity.OAuthProvider]OAuthProviderGateway
+	providers map[entity.OAuthProvider]providers.OAuthProviderGateway
 	jwt       *jwt.Manager
 	ttl       int64
 }
 
 // NewService creates a new OAuth login service
 func NewService(
-	accounts AccountProvider,
+	accounts AuthRepository,
 	oauth OAuthRepository,
 	sessions SessionManager,
 	outbox OutboxRepository,
-	providers map[entity.OAuthProvider]OAuthProviderGateway,
+	providers map[entity.OAuthProvider]providers.OAuthProviderGateway,
 	jwtManager *jwt.Manager,
 	ttl int64,
 ) *Service {
@@ -172,8 +153,8 @@ func (s *Service) createOAuthLink(
 	ctx context.Context,
 	accountID string,
 	provider entity.OAuthProvider,
-	userInfo *OAuthUserInfo,
-	token *OAuthToken,
+	userInfo *providers.OAuthUserInfo,
+	token *providers.OAuthToken,
 ) error {
 	oauthAccount := entity.NewOAuthAccount(accountID, provider, userInfo.ProviderID, userInfo.Email)
 	oauthAccount.AccessToken = token.AccessToken
@@ -185,9 +166,9 @@ func (s *Service) createOAuthLink(
 
 func (s *Service) createOAuthAccount(
 	ctx context.Context,
-	userInfo *OAuthUserInfo,
+	userInfo *providers.OAuthUserInfo,
 	provider entity.OAuthProvider,
-	token *OAuthToken,
+	token *providers.OAuthToken,
 ) (string, error) {
 	// Create account (no password for OAuth)
 	account, err := entity.NewAccount(userInfo.Email, "")

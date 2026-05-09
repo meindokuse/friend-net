@@ -1,11 +1,12 @@
 package oauth
 
 import (
-	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/providers"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/get_linked"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/link"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/login"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/unlink"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 )
@@ -21,7 +22,7 @@ type Registry struct {
 // NewRegistry creates a new OAuth service registry
 func NewRegistry(
 	storage *storage.Registry,
-	providers map[entity.OAuthProvider]login.OAuthProviderGateway,
+	providers map[entity.OAuthProvider]providers.OAuthProviderGateway,
 	jwtManager *jwt.Manager,
 	refreshTTL int64,
 ) *Registry {

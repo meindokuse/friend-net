@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/providers"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
 )
@@ -15,36 +16,17 @@ type OAuthRepository interface {
 	Create(ctx context.Context, account *entity.OAuthAccount) error
 }
 
-// OAuthProviderGateway interface for OAuth provider operations
-type OAuthProviderGateway interface {
-	ExchangeToken(ctx context.Context, code string) (*OAuthToken, error)
-	GetUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error)
-}
-
-// OAuthToken represents OAuth tokens
-type OAuthToken struct {
-	AccessToken  string
-	RefreshToken string
-	Expiry       int64
-}
-
-// OAuthUserInfo represents user info from OAuth provider
-type OAuthUserInfo struct {
-	ProviderID string
-	Email      string
-	Name       string
-}
 
 // Service handles OAuth link use case
 type Service struct {
 	oauth     OAuthRepository
-	providers map[entity.OAuthProvider]OAuthProviderGateway
+	providers map[entity.OAuthProvider]providers.OAuthProviderGateway
 }
 
 // NewService creates a new link service
 func NewService(
 	oauth OAuthRepository,
-	providers map[entity.OAuthProvider]OAuthProviderGateway,
+	providers map[entity.OAuthProvider]providers.OAuthProviderGateway,
 ) *Service {
 	return &Service{
 		oauth:     oauth,

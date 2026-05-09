@@ -14,9 +14,15 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
+	authv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/auth/v1"
+	oauthv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/oauth/v1"
+	authservice "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth"
+	oauthservice "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/login"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/providers"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/flusher"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/gateway/oauth"
@@ -24,13 +30,9 @@ import (
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/closer"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/connector/postgres"
+	redisconn "github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/connector/redis"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/pass"
-	authv1 "github.com/meindokuse/cloud-drive/auth-service/internal/app/auth/v1"
-	oauthv1 "github.com/meindokuse/cloud-drive/auth-service/internal/app/oauth/v1"
-	authservice "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth"
-	oauthservice "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/oauth"
-	redisconn "github.com/meindokuse/cloud-drive/auth-service/internal/pkg/connector/redis"
 )
 
 // App is the main application structure
@@ -93,7 +95,11 @@ func (a *App) Run(ctx context.Context) {
 
 	// Close resources
 	c := closer.New(a.cfg.Graceful.Timeout)
-	c.Add(a.pool.Close)
+	closeRedis := func(_ context.Context) error {
+		a.pool.Close()
+		return nil
+	}
+	c.Add(closeRedis)
 	c.Add(func(ctx context.Context) error {
 		return a.rdb.Close()
 	})
@@ -205,7 +211,7 @@ func (a *App) initServices() {
 	)
 
 	// OAuth services - create providers map
-	providers := make(map[entity.OAuthProvider]login.OAuthProviderGateway)
+	providers := make(map[entity.OAuthProvider]providers.OAuthProviderGateway)
 	if a.oauthGateway.Google != nil {
 		providers[entity.OAuthGoogle] = &oauthProviderAdapter{client: a.oauthGateway.Google}
 	}
@@ -331,24 +337,24 @@ type oauthProviderAdapter struct {
 	client *oauth.GoogleClient
 }
 
-func (a *oauthProviderAdapter) ExchangeToken(ctx context.Context, code string) (*login.OAuthToken, error) {
+func (a *oauthProviderAdapter) ExchangeToken(ctx context.Context, code string) (*providers.OAuthToken, error) {
 	tokens, err := a.client.ExchangeToken(ctx, code)
 	if err != nil {
 		return nil, err
 	}
-	return &login.OAuthToken{
+	return &providers.OAuthToken{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		Expiry:       tokens.Expiry,
 	}, nil
 }
 
-func (a *oauthProviderAdapter) GetUserInfo(ctx context.Context, accessToken string) (*login.OAuthUserInfo, error) {
+func (a *oauthProviderAdapter) GetUserInfo(ctx context.Context, accessToken string) (*providers.OAuthUserInfo, error) {
 	info, err := a.client.GetUserInfo(ctx, accessToken)
 	if err != nil {
 		return nil, err
 	}
-	return &login.OAuthUserInfo{
+	return &providers.OAuthUserInfo{
 		ProviderID: info.ProviderID,
 		Email:      info.Email,
 		Name:       info.Name,
