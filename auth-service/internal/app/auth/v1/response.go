@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	authlogin "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth/login"
-	authrefresh "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth/refresh"
-	oauthlogin "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/oauth/login"
+	authlogin "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/login"
+	authrefresh "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/refresh"
+	oauthlogin "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/login"
 )
 
 func (i *Implementation) respondWithTokenPairFromLogin(ctx *gin.Context, statusCode int, result *authlogin.Result) {

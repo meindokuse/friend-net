@@ -1,0 +1,7 @@
+vendor/
+.git/
+*.exe
+dist/
+tmp/
+.idea/
+.kiro/

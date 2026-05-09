@@ -1,26 +1,71 @@
 http:
   middlewares:
-    cors:
+    # Rate limiting
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1s
+
+    # CORS
+    cors-headers:
       headers:
-        accessControlAllowOriginList:
-          - "*"
         accessControlAllowMethods:
           - GET
           - POST
+          - PUT
+          - DELETE
           - OPTIONS
         accessControlAllowHeaders:
-          - Authorization
           - Content-Type
-          - X-Request-Id
-        addVaryHeader: true
+          - Authorization
+          - X-Request-ID
+        accessControlAllowOriginList:
+          - "https://yourdomain.com"
+          - "http://localhost:3000"
         accessControlMaxAge: 100
+        addVaryHeader: true
 
-    auth:
+    # Добавление заголовков безопасности
+    security-headers:
+      headers:
+        frameDeny: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsSeconds: 31536000
+    
+    jwt-auth:
       forwardAuth:
-        address: "http://auth-service:8080/validate"
+        address: "http://auth-service:8000/auth/verify"
         trustForwardHeader: true
         authResponseHeaders:
-          - X-User-Id
-          - X-User-Role
+          - "X-User-ID"
+          - "X-User-Role"
 
-    # (Traefik сам ведёт accessLog, дополнительное логирование в middleware обычно не нужно)
+    # Стриппинг префикса /api/v1/users -> /
+    strip-users-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1/users"
+
+    strip-orders-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1/orders"
+
+    strip-products-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1/products"
+
+    # Retry
+    retry-middleware:
+      retry:
+        attempts: 3
+        initialInterval: 100ms
+
+    # Circuit breaker
+    circuit-breaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.30 || ResponseCodeRatio(500, 600, 0, 600) > 0.25"

@@ -4,7 +4,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage/account"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage/oauth"
-	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage/outbox"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage/session"
 	"github.com/redis/go-redis/v9"
 )
@@ -14,7 +13,6 @@ type Registry struct {
 	Account *account.Storage
 	OAuth   *oauth.Storage
 	Session *session.Storage
-	Outbox  *outbox.Storage
 }
 
 // NewRegistry creates a new storage registry
@@ -23,6 +21,5 @@ func NewRegistry(pool *pgxpool.Pool, rdb *redis.Client, sessionTTL int64) *Regis
 		Account: account.NewStorage(pool),
 		OAuth:   oauth.NewStorage(pool),
 		Session: session.NewStorage(rdb, sessionTTL),
-		Outbox:  outbox.NewStorage(pool),
 	}
 }

@@ -26,6 +26,7 @@ func NewUsername(raw string) (Username, error) {
 	}
 	return Username{value: strings.ToLower(raw)}, nil
 }
+
 func MustNewUsername(raw string) Username { u, _ := NewUsername(raw); return u }
 func (u Username) String() string         { return u.value }
 
@@ -44,6 +45,7 @@ func NewEmail(raw string) (Email, error) {
 	}
 	return Email{value: raw}, nil
 }
+
 func MustNewEmail(raw string) Email { e, _ := NewEmail(raw); return e }
 func (e Email) String() string      { return e.value }
 
@@ -63,5 +65,6 @@ func NewPhone(raw string) (Phone, error) {
 	}
 	return Phone{value: raw}, nil
 }
+
 func MustNewPhone(raw string) Phone { p, _ := NewPhone(raw); return p }
 func (p Phone) String() string      { return p.value }

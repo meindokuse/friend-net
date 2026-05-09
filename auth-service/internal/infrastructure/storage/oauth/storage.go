@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage/oauth/dao"
 )
 
 // Storage implements OAuth repository
@@ -33,20 +34,19 @@ func (s *Storage) GetByProviderID(ctx context.Context, provider entity.OAuthProv
 		LIMIT 1
 	`
 
-	var account entity.OAuthAccount
+	var d dao.OAuthAccount
 	err := s.pool.QueryRow(ctx, query, provider, providerID).Scan(
-		&account.ID,
-		&account.AccountID,
-		&account.Provider,
-		&account.ProviderID,
-		&account.Email,
-		&account.AccessToken,
-		&account.RefreshToken,
-		&account.Expiry,
-		&account.CreatedAt,
-		&account.UpdatedAt,
+		&d.ID,
+		&d.AccountID,
+		&d.Provider,
+		&d.ProviderID,
+		&d.Email,
+		&d.AccessToken,
+		&d.RefreshToken,
+		&d.Expiry,
+		&d.CreatedAt,
+		&d.UpdatedAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // Not found is not an error
@@ -54,7 +54,7 @@ func (s *Storage) GetByProviderID(ctx context.Context, provider entity.OAuthProv
 		return nil, fmt.Errorf("query: %w", err)
 	}
 
-	return &account, nil
+	return d.ToEntity(), nil
 }
 
 // GetByAccountID finds all OAuth accounts for a user
@@ -76,22 +76,22 @@ func (s *Storage) GetByAccountID(ctx context.Context, accountID string) ([]*enti
 
 	var accounts []*entity.OAuthAccount
 	for rows.Next() {
-		var account entity.OAuthAccount
+		var d dao.OAuthAccount
 		if err := rows.Scan(
-			&account.ID,
-			&account.AccountID,
-			&account.Provider,
-			&account.ProviderID,
-			&account.Email,
-			&account.AccessToken,
-			&account.RefreshToken,
-			&account.Expiry,
-			&account.CreatedAt,
-			&account.UpdatedAt,
+			&d.ID,
+			&d.AccountID,
+			&d.Provider,
+			&d.ProviderID,
+			&d.Email,
+			&d.AccessToken,
+			&d.RefreshToken,
+			&d.Expiry,
+			&d.CreatedAt,
+			&d.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
-		accounts = append(accounts, &account)
+		accounts = append(accounts, d.ToEntity())
 	}
 
 	return accounts, nil

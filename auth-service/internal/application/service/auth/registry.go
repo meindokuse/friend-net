@@ -42,7 +42,6 @@ func NewRegistry(
 		),
 		Register: register.NewService(
 			storage.Account,
-			storage.Outbox,
 			hasher,
 		),
 		Refresh: refresh.NewService(

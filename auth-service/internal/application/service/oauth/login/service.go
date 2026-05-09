@@ -8,6 +8,7 @@ import (
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/providers"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/events/account_created"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
 )
@@ -31,18 +32,11 @@ type SessionManager interface {
 	SaveRefreshPair(ctx context.Context, sessionID string, pair *entity.RefreshPair) error
 }
 
-// OutboxRepository interface for outbox operations
-type OutboxRepository interface {
-	Create(ctx context.Context, event *entity.OutboxEvent) error
-}
-
-
 // Service handles OAuth login
 type Service struct {
 	accounts  AuthRepository
 	oauth     OAuthRepository
 	sessions  SessionManager
-	outbox    OutboxRepository
 	providers map[entity.OAuthProvider]providers.OAuthProviderGateway
 	jwt       *jwt.Manager
 	ttl       int64
@@ -53,7 +47,6 @@ func NewService(
 	accounts AuthRepository,
 	oauth OAuthRepository,
 	sessions SessionManager,
-	outbox OutboxRepository,
 	providers map[entity.OAuthProvider]providers.OAuthProviderGateway,
 	jwtManager *jwt.Manager,
 	ttl int64,
@@ -62,7 +55,6 @@ func NewService(
 		accounts:  accounts,
 		oauth:     oauth,
 		sessions:  sessions,
-		outbox:    outbox,
 		providers: providers,
 		jwt:       jwtManager,
 		ttl:       ttl,
@@ -177,7 +169,7 @@ func (s *Service) createOAuthAccount(
 	}
 
 	// Create outbox event
-	outboxEvent, err := entity.NewAccountCreatedEvent(
+	outboxEvent, err := account_created.New(
 		account.ID,
 		account.Email,
 		userInfo.Name,
