@@ -8,27 +8,25 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/meindokuse/cloud-drive/user-service-new/config"
-	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/messagebus"
-	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/processor"
-	"github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/closer"
-	userv1 "github.com/meindokuse/cloud-drive/user-service/internal/app/user/v1"
-	userservice "github.com/meindokuse/cloud-drive/user-service/internal/application/service/user"
-	userstorage "github.com/meindokuse/cloud-drive/user-service/internal/infrastructure/storage/user"
-	mongoconn "github.com/meindokuse/cloud-drive/user-service/internal/pkg/connector/mongo"
 	"go.mongodb.org/mongo-driver/mongo"
+
+	"github.com/meindokuse/cloud-drive/user-service-new/config"
+	userservice "github.com/meindokuse/cloud-drive/user-service-new/internal/application/service/user"
+	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/messagebus"
+	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/storage"
+	"github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/closer"
 )
 
 type App struct {
-	cfg      *config.Config
-	db       *mongo.Database
-	services *userservice.Service
-	httpSrv  *http.Server
-	consumer *messagebus.Consumer
+	cfg        *config.Config
+	db         *mongo.Database
+	storages   *storage.Registry
+	services   *userservice.Registry
+	httpSrv    *http.Server
+	messageBus *messagebus.Registry
 }
 
-func New(ctx context.Context) *App {
-	_ = ctx
+func New(_ context.Context) *App {
 	return &App{cfg: config.Instance()}
 }
 
@@ -37,9 +35,11 @@ func (a *App) Run(ctx context.Context) {
 		slog.ErrorContext(ctx, "init failed", "error", err)
 		os.Exit(1)
 	}
-	if a.consumer != nil {
-		go a.consumer.Start(ctx)
+
+	if a.messageBus.Consumer != nil {
+		go a.messageBus.Consumer.Start(ctx)
 	}
+
 	go func() {
 		slog.InfoContext(ctx, "user-service starting", "http_addr", a.cfg.Server.HTTPAddr)
 		if err := a.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -47,37 +47,19 @@ func (a *App) Run(ctx context.Context) {
 			os.Exit(1)
 		}
 	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+
 	shutdownCtx, cancel := context.WithTimeout(ctx, a.cfg.Graceful.Timeout)
 	defer cancel()
 	_ = a.httpSrv.Shutdown(shutdownCtx)
+
 	c := closer.New(a.cfg.Graceful.Timeout)
-	if a.consumer != nil {
-		c.Add(a.consumer.Stop)
+	if a.messageBus.Consumer != nil {
+		c.Add(a.messageBus.Consumer.Stop)
 	}
 	c.Add(func(ctx context.Context) error { return a.db.Client().Disconnect(ctx) })
 	c.CloseAll()
-}
-
-func (a *App) init(ctx context.Context) error {
-	db, err := mongoconn.NewDatabase(ctx, a.cfg.Mongo)
-	if err != nil {
-		return err
-	}
-	a.db = db
-	storage, err := userstorage.NewStorage(db)
-	if err != nil {
-		return err
-	}
-	a.services = userservice.NewService(storage)
-	handler := userv1.New(a.services)
-	router := handler.Router()
-	a.httpSrv = &http.Server{Addr: a.cfg.Server.HTTPAddr, Handler: router}
-	if a.cfg.Kafka.Enabled {
-		accountProcessor := processor.NewAccountCreatedProcessor(a.services)
-		a.consumer = messagebus.NewConsumer(a.cfg.Kafka.Brokers, a.cfg.Kafka.Topic, a.cfg.Kafka.GroupID, accountProcessor, slog.Default())
-	}
-	return nil
 }

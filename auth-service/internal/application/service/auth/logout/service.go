@@ -3,22 +3,17 @@ package logout
 import (
 	"context"
 
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
 )
 
 // SessionManager interface for session operations
 type SessionManager interface {
-	Get(ctx context.Context, sessionID string) (*Session, error)
+	Get(ctx context.Context, sessionID string) (*entity.Session, error)
 	Revoke(ctx context.Context, sessionID, accountID string) error
 	RevokeAllByAccountID(ctx context.Context, accountID string) error
 	BlacklistAccessToken(ctx context.Context, jti string, ttl int64) error
-}
-
-// Session represents session info for logout
-type Session struct {
-	ID        string
-	AccountID string
 }
 
 // Service handles logout use case

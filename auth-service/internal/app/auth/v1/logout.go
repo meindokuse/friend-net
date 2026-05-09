@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	logout "github.com/meindokuse/cloud-drive/auth-service/internal/application/service/auth"
+	authlogout "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/logout"
 )
 
 // Logout handles POST /auth/logout
@@ -14,7 +14,7 @@ func (i *Implementation) Logout(ctx *gin.Context) {
 	accessToken := extractBearerToken(ctx.GetHeader("Authorization"))
 	refreshToken := i.readRefreshToken(ctx)
 
-	dto := logout.LogoutDTO{
+	dto := authlogout.LogoutDTO{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}

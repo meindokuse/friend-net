@@ -31,7 +31,6 @@ func NewRegistry(
 			storage.Account,
 			storage.OAuth,
 			storage.Session,
-			storage.Outbox,
 			providers,
 			jwtManager,
 			refreshTTL,

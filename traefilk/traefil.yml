@@ -1,17 +1,43 @@
+# Точки входа (порты)
 entryPoints:
   web:
     address: ":80"
+  websecure:
+    address: ":443"
+  traefik:
+    address: ":8080"  # dashboard
 
-providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-
-log:
-  level: INFO
-
-accessLog: {}
-
+# API и Dashboard
 api:
   dashboard: true
-  insecure: true     # Пока для разработки, потом лучше выключить
+  insecure: true  # только для dev, в prod убрать
+
+# Провайдеры
+providers:
+  # Docker провайдер — читает labels с контейнеров
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false  # сервисы не открываются без явного label
+    network: "traefik-net"
+  
+  # Файловый провайдер — для статических правил
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+# Логирование
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      defaultMode: keep
+
+# Метрики (опционально)
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addServicesLabels: true

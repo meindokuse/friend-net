@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	vo "github.com/meindokuse/cloud-drive/user-service/internal/domain/valueobject"
+	vo "github.com/meindokuse/cloud-drive/user-service-new/internal/domain/value_object"
 )
 
 var (

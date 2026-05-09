@@ -1,54 +1,20 @@
 package messagebus
 
 import (
-	"context"
-
-	"github.com/IBM/sarama"
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/messagebus/producer"
 )
 
-// Registry contains message bus components
+// Registry contains message bus components.
 type Registry struct {
-	Producer *Producer
+	Producer *producer.Producer
 }
 
-// NewRegistry creates a new messagebus registry
+// NewRegistry creates a new messagebus registry.
 func NewRegistry(cfg config.KafkaConfig) *Registry {
-	var producer *Producer
+	var p *producer.Producer
 	if cfg.Enabled {
-		producer = NewProducer(cfg)
+		p = producer.New(cfg)
 	}
-	return &Registry{
-		Producer: producer,
-	}
-}
-
-// Producer implements Kafka producer
-type Producer struct {
-	producer sarama.SyncProducer
-	topic    string
-}
-
-// NewProducer creates a new Kafka producer
-func NewProducer(cfg config.KafkaConfig) *Producer {
-	return &Producer{
-		producer: MustSyncProducer(cfg),
-		topic:    cfg.Topic,
-	}
-}
-
-// Close closes the producer
-func (p *Producer) Close(_ context.Context) error {
-	if p.producer == nil {
-		return nil
-	}
-	return p.producer.Close()
-}
-
-// SyncProducer exposes underlying Sarama producer for adapters.
-func (p *Producer) SyncProducer() sarama.SyncProducer {
-	if p == nil {
-		return nil
-	}
-	return p.producer
+	return &Registry{Producer: p}
 }

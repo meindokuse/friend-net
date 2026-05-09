@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/infrastructure/storage/account/dao"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
 )
 
@@ -33,7 +33,6 @@ func (s *Storage) CreateWithOutbox(ctx context.Context, account *entity.Account,
 	}
 	defer tx.Rollback(ctx)
 
-	// Insert account
 	const insertAccountQuery = `
 		INSERT INTO accounts (
 			id, email, password_hash, is_active, created_at, updated_at
@@ -56,7 +55,6 @@ func (s *Storage) CreateWithOutbox(ctx context.Context, account *entity.Account,
 		return fmt.Errorf("insert account: %w", err)
 	}
 
-	// Insert outbox event
 	const insertOutboxQuery = `
 		INSERT INTO outbox_events (
 			id, aggregate_type, aggregate_id, event_type, payload, created_at
@@ -93,19 +91,16 @@ func (s *Storage) FindByEmail(ctx context.Context, email string) (*entity.Accoun
 		LIMIT 1
 	`
 
-	var account entity.Account
-	var lastLoginAt *time.Time
-
+	var d dao.Account
 	err := s.pool.QueryRow(ctx, query, email).Scan(
-		&account.ID,
-		&account.Email,
-		&account.PasswordHash,
-		&account.IsActive,
-		&account.CreatedAt,
-		&account.UpdatedAt,
-		&lastLoginAt,
+		&d.ID,
+		&d.Email,
+		&d.PasswordHash,
+		&d.IsActive,
+		&d.CreatedAt,
+		&d.UpdatedAt,
+		&d.LastLoginAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, terror.NewNotFoundErr("account not found", err)
@@ -113,8 +108,7 @@ func (s *Storage) FindByEmail(ctx context.Context, email string) (*entity.Accoun
 		return nil, fmt.Errorf("query: %w", err)
 	}
 
-	account.LastLoginAt = lastLoginAt
-	return &account, nil
+	return d.ToEntity(), nil
 }
 
 // FindByID finds account by ID
@@ -128,19 +122,16 @@ func (s *Storage) FindByID(ctx context.Context, id uuid.UUID) (*entity.Account, 
 		LIMIT 1
 	`
 
-	var account entity.Account
-	var lastLoginAt *time.Time
-
+	var d dao.Account
 	err := s.pool.QueryRow(ctx, query, id).Scan(
-		&account.ID,
-		&account.Email,
-		&account.PasswordHash,
-		&account.IsActive,
-		&account.CreatedAt,
-		&account.UpdatedAt,
-		&lastLoginAt,
+		&d.ID,
+		&d.Email,
+		&d.PasswordHash,
+		&d.IsActive,
+		&d.CreatedAt,
+		&d.UpdatedAt,
+		&d.LastLoginAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, terror.NewNotFoundErr("account not found", err)
@@ -148,6 +139,5 @@ func (s *Storage) FindByID(ctx context.Context, id uuid.UUID) (*entity.Account, 
 		return nil, fmt.Errorf("query: %w", err)
 	}
 
-	account.LastLoginAt = lastLoginAt
-	return &account, nil
+	return d.ToEntity(), nil
 }
