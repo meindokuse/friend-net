@@ -71,7 +71,7 @@ func (a *App) initServices() {
 }
 
 func (a *App) initMessageBus() {
-	a.messageBus = messagebus.NewRegistry(a.cfg.Kafka, a.services.CreateUser, slog.Default())
+	a.messageBus = messagebus.NewRegistry(a.cfg.Kafka, a.services.CreateUser, a.storages.Idempotency, slog.Default())
 }
 
 func (a *App) initHTTPServer() {

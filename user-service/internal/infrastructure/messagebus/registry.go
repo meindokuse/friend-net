@@ -11,10 +11,23 @@ type Registry struct {
 	Consumer *subscriber.Consumer
 }
 
-func NewRegistry(cfg config.KafkaConfig, creator subscriber.UserCreator, logger *slog.Logger) *Registry {
+func NewRegistry(
+	cfg config.KafkaConfig,
+	creator subscriber.UserCreator,
+	idempotency subscriber.IdempotencyStore,
+	logger *slog.Logger,
+) *Registry {
 	var consumer *subscriber.Consumer
 	if cfg.Enabled {
-		consumer = subscriber.NewConsumer(cfg.Brokers, cfg.Topic, cfg.GroupID, creator, logger)
+		consumer = subscriber.NewConsumer(
+			cfg.Brokers, cfg.Topic, cfg.GroupID,
+			creator, idempotency, logger,
+			cfg.WorkersCount,
+			subscriber.Options{
+				MaxRetries:    cfg.MaxRetries,
+				MaxDLQRetries: cfg.MaxDLQRetries,
+			},
+		)
 	}
 	return &Registry{Consumer: consumer}
 }
