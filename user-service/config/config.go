@@ -47,11 +47,14 @@ type MongoConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers []string      `yaml:"brokers" env:"KAFKA_BROKERS" env-default:"localhost:9092" env-separator:","`
-	Topic   string        `yaml:"topic" env:"KAFKA_TOPIC" env-default:"accounts.events"`
-	GroupID string        `yaml:"groupId" env:"KAFKA_GROUP_ID" env-default:"user-service"`
-	Enabled bool          `yaml:"enabled" env:"KAFKA_ENABLED" env-default:"true"`
-	MaxWait time.Duration `yaml:"maxWait" env:"KAFKA_MAX_WAIT" env-default:"500ms"`
+	Brokers      []string      `yaml:"brokers" env:"KAFKA_BROKERS" env-default:"localhost:9092" env-separator:","`
+	Topic        string        `yaml:"topic" env:"KAFKA_TOPIC" env-default:"accounts.events"`
+	GroupID      string        `yaml:"groupId" env:"KAFKA_GROUP_ID" env-default:"user-service"`
+	Enabled      bool          `yaml:"enabled" env:"KAFKA_ENABLED" env-default:"true"`
+	MaxWait      time.Duration `yaml:"maxWait" env:"KAFKA_MAX_WAIT" env-default:"500ms"`
+	WorkersCount int           `yaml:"workersCount" env:"KAFKA_WORKERS_COUNT" env-default:"16"`
+	MaxRetries   int           `yaml:"maxRetries" env:"KAFKA_MAX_RETRIES" env-default:"3"`
+	MaxDLQRetries int          `yaml:"maxDlqRetries" env:"KAFKA_MAX_DLQ_RETRIES" env-default:"3"`
 }
 
 type GracefulConfig struct {
