@@ -3,6 +3,7 @@ package update_settings
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/domain/entity"
@@ -33,8 +34,11 @@ type Input struct {
 }
 
 func (s *Service) Execute(ctx context.Context, in Input) (*entity.User, error) {
+	slog.DebugContext(ctx, "update_settings.Execute", "user_id", in.UserID, "version", in.Version)
+
 	u, err := s.repo.GetByID(ctx, in.UserID)
 	if err != nil {
+		slog.ErrorContext(ctx, "update_settings.Execute: GetByID failed", "error", err, "user_id", in.UserID)
 		return nil, err
 	}
 	if u.Version() != in.Version {
@@ -53,6 +57,7 @@ func (s *Service) Execute(ctx context.Context, in Input) (*entity.User, error) {
 		return nil, fmt.Errorf("%w: %v", apperr.ErrInvalidInput, err)
 	}
 	if err := s.repo.Update(ctx, u); err != nil {
+		slog.ErrorContext(ctx, "update_settings.Execute: Update failed", "error", err, "user_id", in.UserID)
 		return nil, err
 	}
 	return u, nil

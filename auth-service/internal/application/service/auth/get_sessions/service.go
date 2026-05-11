@@ -2,6 +2,7 @@ package get_sessions
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 )
@@ -37,14 +38,16 @@ type SessionInfo struct {
 
 // GetSessions returns all active sessions for a user
 func (s *Service) GetSessions(ctx context.Context, accountID, currentSessionID string) ([]SessionInfo, error) {
+	slog.DebugContext(ctx, "get-sessions: fetching", "account_id", accountID)
+
 	sessions, err := s.sessions.GetByAccountID(ctx, accountID)
 	if err != nil {
+		slog.ErrorContext(ctx, "get-sessions: storage error", "account_id", accountID, "error", err)
 		return nil, err
 	}
 
 	result := make([]SessionInfo, 0, len(sessions))
 	for _, sess := range sessions {
-		// Skip revoked sessions
 		if sess.Status == entity.SessionStatusRevoked {
 			continue
 		}
@@ -59,5 +62,6 @@ func (s *Service) GetSessions(ctx context.Context, accountID, currentSessionID s
 		})
 	}
 
+	slog.DebugContext(ctx, "get-sessions: done", "account_id", accountID, "count", len(result))
 	return result, nil
 }

@@ -16,7 +16,7 @@ func (i *Implementation) CreateUser(w http.ResponseWriter, r *http.Request) {
 		DisplayName string     `json:"display_name"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, r, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	u, err := i.services.CreateUser.Execute(r.Context(), create_user.Input{
@@ -27,7 +27,7 @@ func (i *Implementation) CreateUser(w http.ResponseWriter, r *http.Request) {
 		DisplayName: req.DisplayName,
 	})
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toUserResponse(u))

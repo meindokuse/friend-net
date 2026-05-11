@@ -5,8 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8081:8080"
+#    ports:
+#      - "8081:8080"
     environment:
       - APP_ENV=local
       - POSTGRES_HOST=postgres
@@ -29,6 +29,12 @@ services:
         condition: service_healthy
     networks:
       - auth-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth-public.rule=Host(`api.example.com`) && PathPrefix(`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/introspect`, `/auth/google`, `/healthz`)"
+      - "traefik.http.routers.auth-private.rule=Host(`api.example.com`) && PathPrefix(`/auth/logout`, `/auth/sessions`, `/auth/link`)"
+      - "traefik.http.routers.auth-private.middlewares=jwt-auth@file"
+      - "traefik.http.services.auth.loadbalancer.server.port=8080"
 
   postgres:
     image: postgres:16-alpine

@@ -155,6 +155,13 @@ func (c *Consumer) Start(parentCtx context.Context) {
 			continue
 		}
 
+		c.logger.InfoContext(ctx, "kafka message received",
+			"topic", msg.Topic,
+			"partition", msg.Partition,
+			"offset", msg.Offset,
+			"consumer_group", c.reader.Config().GroupID,
+		)
+
 		tracker := c.getOrInitTracker(msg.Partition, msg.Offset)
 
 		// Parse early so we can route by AccountID. Malformed messages are poison pills:
@@ -162,7 +169,7 @@ func (c *Consumer) Start(parentCtx context.Context) {
 		var event authevents.AccountCreated
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
 			c.logger.ErrorContext(ctx, "poison pill: unmarshal failed",
-				"partition", msg.Partition, "offset", msg.Offset, "error", err)
+				"topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset, "error", err)
 			c.handlePoisonPill(ctx, msg, tracker, fmt.Errorf("unmarshal: %w", err))
 			continue
 		}
@@ -210,6 +217,7 @@ func (c *Consumer) workerLoop(ctx context.Context, _ int, tasks <-chan workerTas
 
 // process runs the full pipeline: idempotency check → handle with retry → mark processed → commit.
 func (c *Consumer) process(ctx context.Context, task workerTask) {
+	start := time.Now()
 	msg := task.msg
 	key := idempotencyKey(msg)
 
@@ -220,20 +228,30 @@ func (c *Consumer) process(ctx context.Context, task workerTask) {
 	if err != nil {
 		// A failed lookup is not a reason to skip — fall through to processing.
 		c.logger.ErrorContext(ctx, "idempotency lookup failed",
-			"key", key, "partition", msg.Partition, "offset", msg.Offset, "error", err)
+			"topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset, "error", err)
 	}
 
 	if !already {
 		if processErr := c.handleWithRetry(ctx, task); processErr != nil {
 			c.logger.ErrorContext(ctx, "message permanently failed",
-				"partition", msg.Partition, "offset", msg.Offset, "error", processErr)
+				"topic", msg.Topic,
+				"partition", msg.Partition,
+				"offset", msg.Offset,
+				"error", processErr,
+				"retry_attempt", c.maxRetries,
+			)
 			c.sendToDLQ(ctx, processErr, msg)
 		} else {
+			c.logger.InfoContext(ctx, "kafka message processed",
+				"topic", msg.Topic,
+				"offset", msg.Offset,
+				"duration_ms", time.Since(start).Milliseconds(),
+			)
 			if markErr := c.idempotency.MarkProcessed(ctx, key, msg.Topic, msg.Partition, msg.Offset); markErr != nil {
 				// Non-fatal: successful processing with a failed mark means the message will
 				// be re-processed on restart and skipped by the domain duplicate guards.
 				c.logger.ErrorContext(ctx, "mark processed failed",
-					"key", key, "partition", msg.Partition, "offset", msg.Offset, "error", markErr)
+					"topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset, "error", markErr)
 			}
 		}
 	}
@@ -253,9 +271,13 @@ func (c *Consumer) handleWithRetry(ctx context.Context, task workerTask) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-			c.logger.WarnContext(ctx, "retrying message",
-				"partition", task.msg.Partition, "offset", task.msg.Offset,
-				"attempt", attempt+1, "error", lastErr)
+			c.logger.WarnContext(ctx, "retrying kafka message",
+				"topic", task.msg.Topic,
+				"partition", task.msg.Partition,
+				"offset", task.msg.Offset,
+				"attempt_number", attempt+1,
+				"reason", lastErr,
+			)
 			delay *= 2
 		}
 		if lastErr = c.handle(ctx, task); lastErr == nil {

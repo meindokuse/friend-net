@@ -2,6 +2,7 @@ package logout
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
@@ -42,10 +43,11 @@ type LogoutDTO struct {
 
 // Logout revokes current session
 func (s *Service) Logout(ctx context.Context, dto LogoutDTO) error {
+	slog.DebugContext(ctx, "logout: attempt")
+
 	sessionID := dto.SessionID
 	accountID := ""
 
-	// Extract sessionID from refresh token if not provided
 	if sessionID == "" && dto.RefreshToken != "" {
 		parsedSessionID, _, err := s.jwt.ParseRefreshToken(dto.RefreshToken)
 		if err == nil {
@@ -53,7 +55,6 @@ func (s *Service) Logout(ctx context.Context, dto LogoutDTO) error {
 		}
 	}
 
-	// Extract from access token
 	if dto.AccessToken != "" {
 		accessSessionID, accessUserID, jti, expiresAt, err := s.jwt.ExtractAccessClaims(dto.AccessToken)
 		if err == nil {
@@ -61,31 +62,45 @@ func (s *Service) Logout(ctx context.Context, dto LogoutDTO) error {
 				sessionID = accessSessionID
 			}
 			accountID = accessUserID
-
-			// Blacklist access token
 			s.blacklistAccess(ctx, jti, expiresAt)
 		}
 	}
 
 	if sessionID == "" {
+		slog.WarnContext(ctx, "logout: no session identifier in request")
 		return terror.NewBadRequestErr("session id required", nil)
 	}
 
-	// Get accountID if not extracted from token
 	if accountID == "" {
 		session, err := s.sessions.Get(ctx, sessionID)
 		if err != nil {
-			return nil // Session not found, nothing to logout
+			slog.DebugContext(ctx, "logout: session not found, nothing to revoke", "session_id", sessionID)
+			return nil
 		}
 		accountID = session.AccountID
 	}
 
-	return s.sessions.Revoke(ctx, sessionID, accountID)
+	if err := s.sessions.Revoke(ctx, sessionID, accountID); err != nil {
+		slog.ErrorContext(ctx, "logout: revoke session failed",
+			"session_id", sessionID, "account_id", accountID, "error", err)
+		return err
+	}
+
+	slog.InfoContext(ctx, "logout: session revoked", "session_id", sessionID, "account_id", accountID)
+	return nil
 }
 
 // LogoutAll revokes all user sessions
 func (s *Service) LogoutAll(ctx context.Context, accountID string) error {
-	return s.sessions.RevokeAllByAccountID(ctx, accountID)
+	slog.DebugContext(ctx, "logout-all: attempt", "account_id", accountID)
+
+	if err := s.sessions.RevokeAllByAccountID(ctx, accountID); err != nil {
+		slog.ErrorContext(ctx, "logout-all: failed", "account_id", accountID, "error", err)
+		return err
+	}
+
+	slog.InfoContext(ctx, "logout-all: all sessions revoked", "account_id", accountID)
+	return nil
 }
 
 func (s *Service) blacklistAccess(ctx context.Context, jti string, expiresAt int64) {

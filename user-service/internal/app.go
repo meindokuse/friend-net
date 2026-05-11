@@ -15,6 +15,7 @@ import (
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/messagebus"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/storage"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/closer"
+	"github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/logger"
 )
 
 type App struct {
@@ -31,6 +32,8 @@ func New(_ context.Context) *App {
 }
 
 func (a *App) Run(ctx context.Context) {
+	logger.Init(a.cfg.Logger.Level)
+
 	if err := a.init(ctx); err != nil {
 		slog.ErrorContext(ctx, "init failed", "error", err)
 		os.Exit(1)

@@ -3,6 +3,7 @@ package login
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -85,25 +86,28 @@ type Result struct {
 
 // Login handles OAuth login flow
 func (s *Service) Login(ctx context.Context, dto LoginDTO) (*Result, error) {
-	// Get provider
+	slog.DebugContext(ctx, "oauth-login: attempt", "provider", dto.Provider, "ip", dto.IP)
+
 	provider, ok := s.providers[dto.Provider]
 	if !ok {
+		slog.WarnContext(ctx, "oauth-login: unsupported provider", "provider", dto.Provider)
 		return nil, terror.NewBadRequestErr("unsupported provider", nil)
 	}
 
-	// Exchange code for tokens
 	oauthToken, err := provider.ExchangeToken(ctx, dto.Code)
 	if err != nil {
+		slog.ErrorContext(ctx, "oauth-login: token exchange failed",
+			"provider", dto.Provider, "error", err)
 		return nil, fmt.Errorf("exchange token: %w", err)
 	}
 
-	// Get user info
 	userInfo, err := provider.GetUserInfo(ctx, oauthToken.AccessToken)
 	if err != nil {
+		slog.ErrorContext(ctx, "oauth-login: get user info failed",
+			"provider", dto.Provider, "error", err)
 		return nil, fmt.Errorf("get user info: %w", err)
 	}
 
-	// Check if OAuth account exists
 	existingOAuth, err := s.oauth.GetByProviderID(ctx, dto.Provider, userInfo.ProviderID)
 	if err != nil {
 		return nil, err
@@ -113,32 +117,47 @@ func (s *Service) Login(ctx context.Context, dto LoginDTO) (*Result, error) {
 	isNewUser := false
 
 	if existingOAuth != nil {
-		// Existing user - update tokens
 		accountID = existingOAuth.AccountID
+		slog.DebugContext(ctx, "oauth-login: existing oauth account, updating tokens",
+			"account_id", accountID, "provider", dto.Provider)
 		if err := s.oauth.UpdateTokens(ctx, existingOAuth.ID, oauthToken.AccessToken, oauthToken.RefreshToken, oauthToken.Expiry); err != nil {
+			slog.ErrorContext(ctx, "oauth-login: update tokens failed",
+				"account_id", accountID, "error", err)
 			return nil, err
 		}
 	} else {
-		// Check if account exists by email
 		existingAccount, err := s.accounts.FindByEmail(ctx, userInfo.Email)
 		if err == nil && existingAccount != nil {
-			// Link to existing account
 			accountID = existingAccount.ID.String()
+			slog.DebugContext(ctx, "oauth-login: linking to existing account by email",
+				"account_id", accountID, "provider", dto.Provider)
 			if err := s.createOAuthLink(ctx, accountID, dto.Provider, userInfo, oauthToken); err != nil {
+				slog.ErrorContext(ctx, "oauth-login: create oauth link failed",
+					"account_id", accountID, "error", err)
 				return nil, err
 			}
 		} else {
-			// Create new account
+			slog.DebugContext(ctx, "oauth-login: creating new account", "provider", dto.Provider)
 			accountID, err = s.createOAuthAccount(ctx, userInfo, dto.Provider, oauthToken)
 			if err != nil {
+				slog.ErrorContext(ctx, "oauth-login: create account failed",
+					"provider", dto.Provider, "error", err)
 				return nil, err
 			}
 			isNewUser = true
 		}
 	}
 
-	// Create session
-	return s.createSession(ctx, accountID, dto.Fingerprint, dto.IP, dto.UserAgent, isNewUser)
+	result, err := s.createSession(ctx, accountID, dto.Fingerprint, dto.IP, dto.UserAgent, isNewUser)
+	if err != nil {
+		slog.ErrorContext(ctx, "oauth-login: create session failed",
+			"account_id", accountID, "error", err)
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "oauth-login: success",
+		"account_id", accountID, "provider", dto.Provider, "is_new_user", isNewUser)
+	return result, nil
 }
 
 func (s *Service) createOAuthLink(

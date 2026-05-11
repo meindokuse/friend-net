@@ -3,6 +3,7 @@ package unlink
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 )
@@ -29,8 +30,13 @@ func NewService(
 
 // Unlink removes OAuth provider from account
 func (s *Service) Unlink(ctx context.Context, accountID string, provider entity.OAuthProvider) error {
+	slog.DebugContext(ctx, "oauth-unlink: attempt",
+		"account_id", accountID, "provider", provider)
+
 	accounts, err := s.oauth.GetByAccountID(ctx, accountID)
 	if err != nil {
+		slog.ErrorContext(ctx, "oauth-unlink: get linked accounts failed",
+			"account_id", accountID, "error", err)
 		return err
 	}
 
@@ -43,8 +49,18 @@ func (s *Service) Unlink(ctx context.Context, accountID string, provider entity.
 	}
 
 	if targetAccount == nil {
+		slog.WarnContext(ctx, "oauth-unlink: provider not linked",
+			"account_id", accountID, "provider", provider)
 		return errors.New("provider not linked")
 	}
 
-	return s.oauth.Delete(ctx, targetAccount.ID)
+	if err := s.oauth.Delete(ctx, targetAccount.ID); err != nil {
+		slog.ErrorContext(ctx, "oauth-unlink: delete failed",
+			"account_id", accountID, "provider", provider, "error", err)
+		return err
+	}
+
+	slog.InfoContext(ctx, "oauth-unlink: provider unlinked",
+		"account_id", accountID, "provider", provider)
+	return nil
 }

@@ -3,6 +3,7 @@ package login
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -74,32 +75,44 @@ type Result struct {
 
 // Login authenticates user and creates session
 func (s *Service) Login(ctx context.Context, dto LoginDTO) (*Result, error) {
-	// 1. Find account by email
+	slog.DebugContext(ctx, "login: attempt", "email", dto.Email, "ip", dto.IP)
+
 	account, err := s.accounts.FindByEmail(ctx, dto.Email)
 	if err != nil {
+		slog.WarnContext(ctx, "login: account not found", "email", dto.Email, "ip", dto.IP)
 		return nil, terror.NewUnauthorizedErr("invalid credentials", err)
 	}
 
-	// 2. Verify password
 	if err := s.hasher.Compare(account.PasswordHash, dto.Password); err != nil {
+		slog.WarnContext(ctx, "login: invalid password", "email", dto.Email, "ip", dto.IP)
 		return nil, terror.NewUnauthorizedErr("invalid credentials", err)
 	}
 
-	// 3. Check session limit
 	count, err := s.sessions.CountByAccountID(ctx, account.ID.String())
 	if err != nil {
+		slog.ErrorContext(ctx, "login: count sessions failed", "account_id", account.ID, "error", err)
 		return nil, fmt.Errorf("count sessions: %w", err)
 	}
 
 	if count >= maxSessionsPerUser {
-		// Evict oldest session
+		slog.DebugContext(ctx, "login: session limit reached, evicting oldest",
+			"account_id", account.ID.String(),
+			"session_count", count,
+		)
 		if err := s.evictOldestSession(ctx, account.ID.String()); err != nil {
+			slog.ErrorContext(ctx, "login: evict session failed", "account_id", account.ID, "error", err)
 			return nil, fmt.Errorf("evict session: %w", err)
 		}
 	}
 
-	// 4. Create session and tokens
-	return s.createSessionAndTokens(ctx, account.ID.String(), dto.Fingerprint, dto.IP, dto.UserAgent)
+	result, err := s.createSessionAndTokens(ctx, account.ID.String(), dto.Fingerprint, dto.IP, dto.UserAgent)
+	if err != nil {
+		slog.ErrorContext(ctx, "login: create session failed", "account_id", account.ID, "error", err)
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "login: success", "account_id", account.ID.String(), "ip", dto.IP)
+	return result, nil
 }
 
 func (s *Service) createSessionAndTokens(

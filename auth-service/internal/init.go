@@ -10,6 +10,7 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
 	authv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/auth/v1"
@@ -25,6 +26,7 @@ import (
 	redisconn "github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/connector/redis"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/event/flusher/platform"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/logger"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/pass"
 )
 
@@ -130,8 +132,54 @@ func (a *App) initServices() {
 	)
 }
 
+func loggingMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		traceID := uuid.NewString()
+
+		ctx := logger.InitRequestContext(c.Request.Context(), traceID, c.FullPath())
+		c.Request = c.Request.WithContext(ctx)
+		c.Header("X-Trace-Id", traceID)
+
+		slog.DebugContext(ctx, "request started",
+			"method", c.Request.Method,
+			"path", c.FullPath(),
+			"remote_addr", c.ClientIP(),
+		)
+
+		c.Next()
+
+		status := c.Writer.Status()
+		duration := time.Since(start)
+
+		// Enrich with user_id after handlers run (set by authMiddleware)
+		finalCtx := ctx
+		if accountID, exists := c.Get("account_id"); exists {
+			if id, ok := accountID.(string); ok && id != "" {
+				finalCtx = logger.WithUserIDEntry(finalCtx, id)
+			}
+		}
+
+		lvl := slog.LevelInfo
+		if status >= 500 {
+			lvl = slog.LevelError
+		} else if status >= 400 {
+			lvl = slog.LevelWarn
+		}
+
+		slog.Log(finalCtx, lvl, "request completed",
+			"method", c.Request.Method,
+			"path", c.FullPath(),
+			"status", status,
+			"duration_ms", duration.Milliseconds(),
+		)
+	}
+}
+
 func (a *App) initHTTPServer(_ context.Context) error {
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(loggingMiddleware())
 
 	corsConfig := config.DefaultCORSConfig()
 	router.Use(cors.New(cors.Config{
@@ -157,6 +205,7 @@ func (a *App) initHTTPServer(_ context.Context) error {
 	authGroup.GET("/sessions", authHandler.Sessions)
 	authGroup.DELETE("/sessions/:session_id", authHandler.RevokeSession)
 	authGroup.POST("/introspect", authHandler.Introspect)
+	authGroup.GET("/validate", authHandler.Validate)
 
 	oauthHandler := oauthv1.NewOAuthService(a.oauthServices, a.oauthGateway.Google, a.cfg.Controller)
 	oauthGroup := router.Group("/auth")
@@ -220,6 +269,11 @@ func (a *App) authMiddleware() gin.HandlerFunc {
 
 		ctx.Set("account_id", result.AccountID)
 		ctx.Set("session_id", result.SessionID)
+
+		// Propagate user_id into request context so service-level logs include it.
+		enriched := logger.WithUserIDEntry(ctx.Request.Context(), result.AccountID)
+		ctx.Request = ctx.Request.WithContext(enriched)
+
 		ctx.Next()
 	}
 }

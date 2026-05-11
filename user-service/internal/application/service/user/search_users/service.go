@@ -3,6 +3,7 @@ package search_users
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/domain/entity"
@@ -28,6 +29,8 @@ type Input struct {
 }
 
 func (s *Service) Execute(ctx context.Context, in Input) ([]*entity.User, error) {
+	slog.DebugContext(ctx, "search_users.Execute", "query", in.Query, "limit", in.Limit, "offset", in.Offset)
+
 	q := strings.TrimSpace(in.Query)
 	if q == "" {
 		return nil, fmt.Errorf("%w: empty query", apperr.ErrInvalidInput)
@@ -43,5 +46,10 @@ func (s *Service) Execute(ctx context.Context, in Input) ([]*entity.User, error)
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.Search(ctx, q, limit, offset)
+	users, err := s.repo.Search(ctx, q, limit, offset)
+	if err != nil {
+		slog.ErrorContext(ctx, "search_users.Execute: Search failed", "error", err, "query", q)
+		return nil, err
+	}
+	return users, nil
 }

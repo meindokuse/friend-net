@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\cloud-drive\\\\auth-service\" -Recurse -Filter \"*.go\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Read(//d/cloud-drive/**)",
+      "Read(//d/cloud-drive/auth-service-new/**)"
+    ]
+  }
+}
