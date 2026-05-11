@@ -11,7 +11,7 @@ import (
 )
 
 type Repository interface {
-	Search(ctx context.Context, query string, limit, offset int) ([]*entity.User, error)
+	Search(ctx context.Context, params entity.SearchParams) ([]*entity.User, entity.PagedSearchUsers, error)
 }
 
 type Service struct {
@@ -25,15 +25,15 @@ func NewService(repo Repository) *Service {
 type Input struct {
 	Query  string
 	Limit  int
-	Offset int
+	Cursor *entity.SearchCursor
 }
 
-func (s *Service) Execute(ctx context.Context, in Input) ([]*entity.User, error) {
-	slog.DebugContext(ctx, "search_users.Execute", "query", in.Query, "limit", in.Limit, "offset", in.Offset)
+func (s *Service) Execute(ctx context.Context, in Input) (entity.PagedSearchUsers, error) {
+	slog.DebugContext(ctx, "search_users.Execute", "query", in.Query, "limit", in.Limit)
 
 	q := strings.TrimSpace(in.Query)
 	if q == "" {
-		return nil, fmt.Errorf("%w: empty query", apperr.ErrInvalidInput)
+		return entity.PagedSearchUsers{}, fmt.Errorf("%w: empty query", apperr.ErrInvalidInput)
 	}
 	limit := in.Limit
 	if limit <= 0 {
@@ -42,14 +42,15 @@ func (s *Service) Execute(ctx context.Context, in Input) ([]*entity.User, error)
 	if limit > 100 {
 		limit = 100
 	}
-	offset := in.Offset
-	if offset < 0 {
-		offset = 0
-	}
-	users, err := s.repo.Search(ctx, q, limit, offset)
+
+	_, paged, err := s.repo.Search(ctx, entity.SearchParams{
+		Query:  q,
+		Limit:  limit,
+		Cursor: in.Cursor,
+	})
 	if err != nil {
 		slog.ErrorContext(ctx, "search_users.Execute: Search failed", "error", err, "query", q)
-		return nil, err
+		return entity.PagedSearchUsers{}, err
 	}
-	return users, nil
+	return paged, nil
 }
