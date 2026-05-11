@@ -47,7 +47,7 @@ func (i *Implementation) Register(ctx *gin.Context) {
 	var request struct {
 		Email       string `json:"email" binding:"required,email"`
 		Password    string `json:"password" binding:"required,min=8"`
-		DisplayName string `json:"display_name"`
+		DisplayName string `json:"display_name" binding:"required,min=4"`
 	}
 
 	if err := ctx.ShouldBindJSON(&request); err != nil {

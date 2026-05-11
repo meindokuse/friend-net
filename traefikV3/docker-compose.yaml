@@ -1,10 +1,13 @@
-version: '3.8'
 services:
   traefik:
     image: traefik:v3.0
+    container_name: traefik
+    environment:
+      # Это единственный надежный способ для v3 в Docker
+      - DOCKER_API_VERSION=1.54 
     ports:
       - "80:80"
-      - "8080:8080" # Dashboard
+      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml:ro

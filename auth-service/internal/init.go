@@ -31,6 +31,7 @@ import (
 )
 
 func (a *App) init(ctx context.Context) error {
+	logger.Init("info")
 	if err := a.initPostgres(ctx); err != nil {
 		return err
 	}
@@ -213,7 +214,7 @@ func (a *App) initHTTPServer(_ context.Context) error {
 	oauthGroup.GET("/google/callback", oauthHandler.GoogleCallback)
 
 	oauthProtected := router.Group("/auth")
-	oauthProtected.Use(a.authMiddleware())
+	// oauthProtected.Use(a.authMiddleware())
 	oauthProtected.GET("/link/google", oauthHandler.LinkGoogle)
 	oauthProtected.GET("/link/google/callback", oauthHandler.LinkGoogleCallback)
 	oauthProtected.GET("/linked", oauthHandler.GetLinkedAccounts)

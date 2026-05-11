@@ -53,7 +53,6 @@ type Consumer struct {
 	creator     UserCreator
 	idempotency IdempotencyStore
 	dlq         DLQWriter // optional; nil = log and skip on permanent failure
-	logger      *slog.Logger
 
 	maxRetries    int
 	maxDLQRetries int
@@ -82,7 +81,6 @@ func NewConsumer(
 	topic, groupID string,
 	creator UserCreator,
 	idempotency IdempotencyStore,
-	logger *slog.Logger,
 	workersCount int,
 	opts Options,
 ) *Consumer {
@@ -112,7 +110,6 @@ func NewConsumer(
 		creator:       creator,
 		idempotency:   idempotency,
 		dlq:           opts.DLQ,
-		logger:        logger,
 		maxRetries:    opts.MaxRetries,
 		maxDLQRetries: opts.MaxDLQRetries,
 		workers:       workers,
@@ -140,7 +137,7 @@ func (c *Consumer) Start(parentCtx context.Context) {
 		}
 	}()
 
-	c.logger.InfoContext(ctx, "kafka consumer started",
+	slog.InfoContext(ctx, "kafka consumer started",
 		"topic", c.reader.Config().Topic,
 		"workers", len(c.workers),
 	)
@@ -151,11 +148,11 @@ func (c *Consumer) Start(parentCtx context.Context) {
 			if ctx.Err() != nil {
 				break
 			}
-			c.logger.ErrorContext(ctx, "fetch kafka message failed", "error", err)
+			slog.ErrorContext(ctx, "fetch kafka message failed", "error", err)
 			continue
 		}
 
-		c.logger.InfoContext(ctx, "kafka message received",
+		slog.InfoContext(ctx, "kafka message received",
 			"topic", msg.Topic,
 			"partition", msg.Partition,
 			"offset", msg.Offset,
@@ -168,7 +165,7 @@ func (c *Consumer) Start(parentCtx context.Context) {
 		// they cannot be retried, so we skip immediately and advance the watermark.
 		var event authevents.AccountCreated
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
-			c.logger.ErrorContext(ctx, "poison pill: unmarshal failed",
+			slog.ErrorContext(ctx, "poison pill: unmarshal failed",
 				"topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset, "error", err)
 			c.handlePoisonPill(ctx, msg, tracker, fmt.Errorf("unmarshal: %w", err))
 			continue
@@ -179,7 +176,7 @@ func (c *Consumer) Start(parentCtx context.Context) {
 	}
 
 	c.wg.Wait()
-	c.logger.InfoContext(ctx, "kafka consumer stopped")
+	slog.InfoContext(ctx, "kafka consumer stopped")
 }
 
 // Stop cancels the fetch context and closes the reader. The closer in app.go calls
@@ -199,9 +196,9 @@ func (c *Consumer) Stop(ctx context.Context) error {
 
 	select {
 	case <-done:
-		c.logger.InfoContext(ctx, "all consumer workers drained")
+		slog.InfoContext(ctx, "all consumer workers drained")
 	case <-ctx.Done():
-		c.logger.ErrorContext(ctx, "consumer shutdown timed out; some in-flight messages dropped")
+		slog.ErrorContext(ctx, "consumer shutdown timed out; some in-flight messages dropped")
 	}
 
 	return c.reader.Close()
@@ -227,13 +224,13 @@ func (c *Consumer) process(ctx context.Context, task workerTask) {
 	already, err := c.idempotency.IsProcessed(ctx, key)
 	if err != nil {
 		// A failed lookup is not a reason to skip — fall through to processing.
-		c.logger.ErrorContext(ctx, "idempotency lookup failed",
+		slog.ErrorContext(ctx, "idempotency lookup failed",
 			"topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset, "error", err)
 	}
 
 	if !already {
 		if processErr := c.handleWithRetry(ctx, task); processErr != nil {
-			c.logger.ErrorContext(ctx, "message permanently failed",
+			slog.ErrorContext(ctx, "message permanently failed",
 				"topic", msg.Topic,
 				"partition", msg.Partition,
 				"offset", msg.Offset,
@@ -242,7 +239,7 @@ func (c *Consumer) process(ctx context.Context, task workerTask) {
 			)
 			c.sendToDLQ(ctx, processErr, msg)
 		} else {
-			c.logger.InfoContext(ctx, "kafka message processed",
+			slog.InfoContext(ctx, "kafka message processed",
 				"topic", msg.Topic,
 				"offset", msg.Offset,
 				"duration_ms", time.Since(start).Milliseconds(),
@@ -250,7 +247,7 @@ func (c *Consumer) process(ctx context.Context, task workerTask) {
 			if markErr := c.idempotency.MarkProcessed(ctx, key, msg.Topic, msg.Partition, msg.Offset); markErr != nil {
 				// Non-fatal: successful processing with a failed mark means the message will
 				// be re-processed on restart and skipped by the domain duplicate guards.
-				c.logger.ErrorContext(ctx, "mark processed failed",
+				slog.ErrorContext(ctx, "mark processed failed",
 					"topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset, "error", markErr)
 			}
 		}
@@ -271,7 +268,7 @@ func (c *Consumer) handleWithRetry(ctx context.Context, task workerTask) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-			c.logger.WarnContext(ctx, "retrying kafka message",
+			slog.WarnContext(ctx, "retrying kafka message",
 				"topic", task.msg.Topic,
 				"partition", task.msg.Partition,
 				"offset", task.msg.Offset,
@@ -334,7 +331,7 @@ func (c *Consumer) commitProgress(ctx context.Context, msg kafka.Message, tracke
 		return
 	}
 	if err := c.reader.CommitMessages(ctx, msg); err != nil && ctx.Err() == nil {
-		c.logger.ErrorContext(ctx, "commit offset failed",
+		slog.ErrorContext(ctx, "commit offset failed",
 			"partition", msg.Partition, "offset", msg.Offset, "error", err)
 	}
 }
@@ -350,7 +347,7 @@ func (c *Consumer) handlePoisonPill(ctx context.Context, msg kafka.Message, trac
 // advance the watermark regardless so the partition is not blocked permanently.
 func (c *Consumer) sendToDLQ(ctx context.Context, reason error, msg kafka.Message) {
 	if c.dlq == nil {
-		c.logger.ErrorContext(ctx, "DLQ not configured; message discarded",
+		slog.ErrorContext(ctx, "DLQ not configured; message discarded",
 			"partition", msg.Partition, "offset", msg.Offset, "reason", reason)
 		return
 	}
@@ -359,7 +356,7 @@ func (c *Consumer) sendToDLQ(ctx context.Context, reason error, msg kafka.Messag
 		if err := c.dlq.Write(ctx, reason, msg); err == nil {
 			return
 		}
-		c.logger.ErrorContext(ctx, "DLQ write failed",
+		slog.ErrorContext(ctx, "DLQ write failed",
 			"attempt", i+1, "partition", msg.Partition, "offset", msg.Offset)
 		select {
 		case <-time.After(delay):
@@ -367,7 +364,7 @@ func (c *Consumer) sendToDLQ(ctx context.Context, reason error, msg kafka.Messag
 			return
 		}
 	}
-	c.logger.ErrorContext(ctx, "DLQ exhausted; message permanently lost",
+	slog.ErrorContext(ctx, "DLQ exhausted; message permanently lost",
 		"partition", msg.Partition, "offset", msg.Offset, "reason", reason)
 }
 

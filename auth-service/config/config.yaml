@@ -49,14 +49,14 @@ oauth:
       - "profile"
 
 kafka:
-  enabled: false
+  enabled: true
   brokers:
     - "localhost:9092"
   topic: "accounts.events"
   consumerGroup: "auth-service-flusher"
 
 outbox:
-  flushEnabled: false
+  flushEnabled: true
   flushInterval: "5s"
   batchSize: 100
   lockTimeout: "30s"

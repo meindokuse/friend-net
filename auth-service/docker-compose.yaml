@@ -7,21 +7,14 @@ services:
       dockerfile: Dockerfile
 #    ports:
 #      - "8081:8080"
+    env_file:
+    - .env # Загрузит все переменные из файла
     environment:
-      - APP_ENV=local
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DATABASE=auth_service_new
-      - REDIS_ADDR=redis:6379
-      - JWT_SECRET=your-secret-key-must-be-at-least-32-characters-long
-      - JWT_REFRESH_SECRET=your-refresh-secret-key-must-be-at-least-32-characters-long
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URL=http://localhost:8081/auth/google/callback
-      - KAFKA_ENABLED=false
-      - OUTBOX_FLUSH_ENABLED=false
+    # Переопределяем адреса на имена контейнеров
+    - POSTGRES_HOST=postgres
+    - REDIS_ADDR=redis:6379
+    - KAFKA_BROKERS=kafka:9092
+    - GOOGLE_REDIRECT_URL=http://localhost/auth/google/callback
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,15 +22,16 @@ services:
         condition: service_healthy
     networks:
       - auth-network
+      - traefik-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.auth-public.rule=Host(`api.example.com`) && PathPrefix(`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/introspect`, `/auth/google`, `/healthz`)"
-      - "traefik.http.routers.auth-private.rule=Host(`api.example.com`) && PathPrefix(`/auth/logout`, `/auth/sessions`, `/auth/link`)"
+      - "traefik.http.routers.auth-public.rule=Host(`localhost`) && PathPrefix(`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/introspect`, `/auth/google`, `/healthz`)"
+      - "traefik.http.routers.auth-private.rule=Host(`localhost`) && PathPrefix(`/auth/logout`, `/auth/sessions`, `/auth/link`)"
       - "traefik.http.routers.auth-private.middlewares=jwt-auth@file"
       - "traefik.http.services.auth.loadbalancer.server.port=8080"
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     ports:
       - "5433:5432"
     environment:
@@ -99,3 +93,5 @@ volumes:
 networks:
   auth-network:
     driver: bridge
+  traefik-net:
+    external: true

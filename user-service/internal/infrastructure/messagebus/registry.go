@@ -1,8 +1,6 @@
 package messagebus
 
 import (
-	"log/slog"
-
 	"github.com/meindokuse/cloud-drive/user-service-new/config"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/messagebus/subscriber"
 )
@@ -15,13 +13,12 @@ func NewRegistry(
 	cfg config.KafkaConfig,
 	creator subscriber.UserCreator,
 	idempotency subscriber.IdempotencyStore,
-	logger *slog.Logger,
 ) *Registry {
 	var consumer *subscriber.Consumer
 	if cfg.Enabled {
 		consumer = subscriber.NewConsumer(
 			cfg.Brokers, cfg.Topic, cfg.GroupID,
-			creator, idempotency, logger,
+			creator, idempotency,
 			cfg.WorkersCount,
 			subscriber.Options{
 				MaxRetries:    cfg.MaxRetries,

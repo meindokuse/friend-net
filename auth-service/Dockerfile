@@ -1,10 +1,7 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
-
-# Install dependencies
-RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -21,11 +18,9 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install ca-certificates for HTTPS
-RUN apk --no-cache add ca-certificates tzdata
 
 # Copy binary from builder
-COPY --from=builder /auth-service /app/auth-service-new
+COPY --from=builder /auth-service /app/auth-service
 COPY --from=builder /app/config/config.yaml /app/config/config.yaml
 
 # Create non-root user
@@ -34,4 +29,4 @@ USER appuser
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/auth-service-new"]
+ENTRYPOINT ["/app/auth-service"]
