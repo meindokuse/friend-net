@@ -2,6 +2,7 @@ package delete_user
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/domain/entity"
@@ -26,8 +27,11 @@ type Input struct {
 }
 
 func (s *Service) Execute(ctx context.Context, in Input) error {
+	slog.DebugContext(ctx, "delete_user.Execute", "user_id", in.UserID, "version", in.Version)
+
 	u, err := s.repo.GetByID(ctx, in.UserID)
 	if err != nil {
+		slog.ErrorContext(ctx, "delete_user.Execute: GetByID failed", "error", err, "user_id", in.UserID)
 		return err
 	}
 	if u.Version() != in.Version {
@@ -36,5 +40,9 @@ func (s *Service) Execute(ctx context.Context, in Input) error {
 	if err := u.SoftDelete(); err != nil {
 		return err
 	}
-	return s.repo.Update(ctx, u)
+	if err := s.repo.Update(ctx, u); err != nil {
+		slog.ErrorContext(ctx, "delete_user.Execute: Update failed", "error", err, "user_id", in.UserID)
+		return err
+	}
+	return nil
 }

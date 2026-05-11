@@ -2,6 +2,7 @@ package revoke_session
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
@@ -29,16 +30,28 @@ func NewService(
 
 // RevokeSession revokes a specific session
 func (s *Service) RevokeSession(ctx context.Context, accountID, sessionID string) error {
-	// Verify session belongs to user
+	slog.DebugContext(ctx, "revoke-session: attempt",
+		"account_id", accountID, "session_id", sessionID)
+
 	session, err := s.sessions.Get(ctx, sessionID)
 	if err != nil {
+		slog.WarnContext(ctx, "revoke-session: session not found", "session_id", sessionID)
 		return terror.NewNotFoundErr("session not found", err)
 	}
 
 	if session.AccountID != accountID {
-		// Don't reveal that session belongs to another user
+		slog.WarnContext(ctx, "revoke-session: ownership mismatch",
+			"account_id", accountID, "session_owner", session.AccountID, "session_id", sessionID)
 		return terror.NewNotFoundErr("session not found", nil)
 	}
 
-	return s.sessions.Revoke(ctx, sessionID, accountID)
+	if err := s.sessions.Revoke(ctx, sessionID, accountID); err != nil {
+		slog.ErrorContext(ctx, "revoke-session: storage error",
+			"account_id", accountID, "session_id", sessionID, "error", err)
+		return err
+	}
+
+	slog.InfoContext(ctx, "revoke-session: success",
+		"account_id", accountID, "session_id", sessionID)
+	return nil
 }

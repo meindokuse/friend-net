@@ -14,7 +14,7 @@ func (i *Implementation) SearchUsers(w http.ResponseWriter, r *http.Request) {
 		Offset: parseIntQuery(q.Get("offset"), 0),
 	})
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	items := make([]*publicUserResponse, 0, len(users))

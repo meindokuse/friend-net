@@ -104,15 +104,14 @@ func (f *Flusher) flush(ctx context.Context) error {
 		return fmt.Errorf("kafka producer not initialized")
 	}
 
+	start := time.Now()
+
 	tx, err := f.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	// Transaction-level advisory lock: only one pod flushes at a time.
-	// pg_try_advisory_xact_lock returns false (non-blocking) if another
-	// session already holds the lock; we simply skip this cycle.
 	var locked bool
 	if err := tx.QueryRow(ctx,
 		"SELECT pg_try_advisory_xact_lock($1)", outboxAdvisoryLockKey,
@@ -120,24 +119,39 @@ func (f *Flusher) flush(ctx context.Context) error {
 		return fmt.Errorf("advisory lock: %w", err)
 	}
 	if !locked {
+		slog.DebugContext(ctx, "outbox: advisory lock not acquired, another pod is flushing")
 		return nil
 	}
+
+	slog.DebugContext(ctx, "outbox: advisory lock acquired")
 
 	events, err := f.fetchPending(ctx, tx)
 	if err != nil {
 		return err
 	}
 	if len(events) == 0 {
+		slog.DebugContext(ctx, "outbox: no pending events")
 		return nil
 	}
 
-	slog.DebugContext(ctx, "flushing outbox batch", "count", len(events))
+	// Build a summary of event types for the debug log.
+	typeCounts := make(map[string]int, len(events))
+	for _, e := range events {
+		typeCounts[e.EventType]++
+	}
+	slog.DebugContext(ctx, "outbox: fetched pending events",
+		"count", len(events),
+		"event_types", typeCounts,
+	)
 
 	successIDs, sendErr := f.sendWithRetry(ctx, events)
 	if len(successIDs) == 0 {
+		slog.ErrorContext(ctx, "outbox: kafka send failed — no events published",
+			"total", len(events), "error", sendErr)
 		return sendErr
 	}
 
+	slog.DebugContext(ctx, "outbox: marking events processed", "count", len(successIDs))
 	if err := f.markProcessed(ctx, tx, successIDs); err != nil {
 		return fmt.Errorf("mark processed: %w", err)
 	}
@@ -145,12 +159,14 @@ func (f *Flusher) flush(ctx context.Context) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	slog.InfoContext(ctx, "outbox batch flushed",
+	slog.InfoContext(ctx, "outbox: batch flushed",
 		"sent", len(successIDs),
 		"total", len(events),
+		"failed", len(events)-len(successIDs),
+		"duration_ms", time.Since(start).Milliseconds(),
 	)
 
-	return sendErr // non-nil only on a partial batch failure
+	return sendErr // non-nil only on partial batch failure
 }
 
 func (f *Flusher) fetchPending(ctx context.Context, tx pgx.Tx) ([]*entity.OutboxEvent, error) {
@@ -192,12 +208,18 @@ func (f *Flusher) sendWithRetry(ctx context.Context, events []*entity.OutboxEven
 				return nil, ctx.Err()
 			case <-time.After(f.cfg.RetryDelay):
 			}
-			slog.WarnContext(ctx, "retrying kafka batch send",
+			slog.WarnContext(ctx, "outbox: retrying kafka batch send",
 				"attempt", attempt,
 				"max", maxAttempts,
 				"error", lastErr,
 			)
 		}
+
+		slog.DebugContext(ctx, "outbox: sending kafka batch",
+			"count", len(msgs),
+			"topic", f.topic,
+			"attempt", attempt,
+		)
 
 		err := f.producer.SendMessages(msgs)
 		if err == nil {
@@ -205,6 +227,7 @@ func (f *Flusher) sendWithRetry(ctx context.Context, events []*entity.OutboxEven
 			for i, e := range events {
 				ids[i] = e.ID
 			}
+			slog.DebugContext(ctx, "outbox: kafka batch accepted", "count", len(ids))
 			return ids, nil
 		}
 

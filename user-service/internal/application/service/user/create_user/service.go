@@ -3,6 +3,7 @@ package create_user
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/domain/entity"
@@ -31,6 +32,13 @@ type Input struct {
 }
 
 func (s *Service) Execute(ctx context.Context, in Input) (*entity.User, error) {
+	slog.DebugContext(ctx, "create_user.Execute",
+		"username", in.Username,
+		"has_email", in.Email != nil,
+		"has_phone", in.Phone != nil,
+		"explicit_id", in.ID != nil,
+	)
+
 	username, err := vo.NewUsername(in.Username)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", apperr.ErrInvalidInput, err)
@@ -60,6 +68,8 @@ func (s *Service) Execute(ctx context.Context, in Input) (*entity.User, error) {
 		return nil, err
 	}
 	if err := s.repo.Create(ctx, u); err != nil {
+		slog.ErrorContext(ctx, "create_user.Execute: repo.Create failed",
+			"error", err, "username", in.Username)
 		return nil, err
 	}
 	return u, nil

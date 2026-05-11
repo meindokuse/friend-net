@@ -1,9 +1,11 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -11,6 +13,18 @@ import (
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/pkg/apperr"
 )
+
+// reqLogCtx is a per-request mutable cell. requestLogger allocates it and
+// passes it downstream via context; error helpers write the message so the
+// middleware can include it in the "response sent" log at the correct level.
+type reqLogCtx struct{ errMsg string }
+type reqLogCtxKey struct{}
+
+func storeErrMsg(ctx context.Context, msg string) {
+	if rlc, ok := ctx.Value(reqLogCtxKey{}).(*reqLogCtx); ok {
+		rlc.errMsg = msg
+	}
+}
 
 func decodeJSON(r *http.Request, dst any) error {
 	defer r.Body.Close()
@@ -23,7 +37,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
+// writeError records the error message for the response log and writes the HTTP error response.
+func writeError(w http.ResponseWriter, r *http.Request, status int, msg string) {
+	storeErrMsg(r.Context(), msg)
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
@@ -38,7 +54,7 @@ func parseIntQuery(s string, def int) int {
 	return n
 }
 
-func writeUsecaseError(w http.ResponseWriter, err error) {
+func writeUsecaseError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, apperr.ErrInvalidInput),
 		errors.Is(err, entity.ErrDisplayNameRequired),
@@ -46,18 +62,19 @@ func writeUsecaseError(w http.ResponseWriter, err error) {
 		errors.Is(err, entity.ErrBioTooLong),
 		errors.Is(err, entity.ErrInvalidPrivacyLevel),
 		errors.Is(err, entity.ErrEmailOrPhoneRequired):
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 	case errors.Is(err, entity.ErrUserNotFound):
-		writeError(w, http.StatusNotFound, "user not found")
+		writeError(w, r, http.StatusNotFound, "user not found")
 	case errors.Is(err, entity.ErrUsernameAlreadyTaken),
 		errors.Is(err, entity.ErrEmailAlreadyTaken),
 		errors.Is(err, entity.ErrPhoneAlreadyTaken),
 		errors.Is(err, entity.ErrVersionConflict):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, r, http.StatusConflict, err.Error())
 	case errors.Is(err, entity.ErrAlreadyDeleted):
-		writeError(w, http.StatusGone, "user already deleted")
+		writeError(w, r, http.StatusGone, "user already deleted")
 	default:
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		slog.ErrorContext(r.Context(), "unhandled usecase error", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal server error")
 	}
 }
 

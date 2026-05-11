@@ -10,12 +10,12 @@ import (
 func (i *Implementation) GetMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromCtx(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	u, err := i.services.GetUser.ByID(r.Context(), userID)
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toUserResponse(u))
@@ -24,12 +24,12 @@ func (i *Implementation) GetMe(w http.ResponseWriter, r *http.Request) {
 func (i *Implementation) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user id")
+		writeError(w, r, http.StatusBadRequest, "invalid user id")
 		return
 	}
 	u, err := i.services.GetUser.ByID(r.Context(), id)
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toPublicUserResponse(u))
@@ -38,7 +38,7 @@ func (i *Implementation) GetUserByID(w http.ResponseWriter, r *http.Request) {
 func (i *Implementation) GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 	u, err := i.services.GetUser.ByUsername(r.Context(), chi.URLParam(r, "username"))
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toPublicUserResponse(u))
@@ -49,12 +49,12 @@ func (i *Implementation) GetUsersByIDs(w http.ResponseWriter, r *http.Request) {
 		IDs []uuid.UUID `json:"ids"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, r, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	users, err := i.services.GetUser.ByIDs(r.Context(), req.IDs)
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	items := make([]*publicUserResponse, 0, len(users))

@@ -1,12 +1,12 @@
 version: "3.8"
 
 services:
-  user-service-new:
+  user-service:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8081:8081"
+#    ports:
+#      - "8081:8081"
     environment:
       - APP_ENV=local
       - HTTP_ADDR=:8081
@@ -21,6 +21,13 @@ services:
         condition: service_healthy
     networks:
       - user-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users-public.rule=Host(`api.example.com`) && (Path(`/users`) && Method(`POST`) || PathPrefix(`/users/search`))"
+      - "traefik.http.routers.users-private.rule=Host(`api.example.com`) && PathPrefix(`/users`)"
+      - "traefik.http.routers.users-private.priority=1"
+      - "traefik.http.routers.users-private.middlewares=jwt-auth@file,api-rate-limit@file"
+      - "traefik.http.services.users.loadbalancer.server.port=8081" # Порт ВНУТРИ контейнера
 
   mongo:
     image: mongo:7

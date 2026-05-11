@@ -2,6 +2,7 @@ package introspect
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
@@ -41,16 +42,19 @@ type Result struct {
 func (s *Service) Introspect(ctx context.Context, accessToken string) (*Result, error) {
 	claims, err := s.jwt.VerifyAccessToken(accessToken)
 	if err != nil {
+		slog.DebugContext(ctx, "introspect: invalid token signature")
 		return &Result{Active: false}, nil
 	}
 
-	// Check if blacklisted
 	blacklisted, err := s.sessions.IsBlacklisted(ctx, claims.ID)
 	if err != nil {
+		slog.ErrorContext(ctx, "introspect: blacklist check failed", "jti", claims.ID, "error", err)
 		return nil, terror.NewInternalErr("check blacklist", err)
 	}
 
 	if blacklisted {
+		slog.DebugContext(ctx, "introspect: token is blacklisted",
+			"jti", claims.ID, "account_id", claims.Subject)
 		return &Result{Active: false}, nil
 	}
 

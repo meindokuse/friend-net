@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
@@ -55,47 +56,66 @@ type Result struct {
 
 // Refresh validates refresh token and creates new tokens
 func (s *Service) Refresh(ctx context.Context, dto RefreshDTO) (*Result, error) {
-	// 1. Parse refresh token
+	slog.DebugContext(ctx, "refresh: attempt")
+
 	sessionID, randomPart, err := s.jwt.ParseRefreshToken(dto.RefreshToken)
 	if err != nil {
+		slog.WarnContext(ctx, "refresh: invalid token format", "error", err)
 		return nil, terror.NewUnauthorizedErr("invalid refresh token", err)
 	}
 
-	// 2. Get session
 	session, err := s.sessions.Get(ctx, sessionID)
 	if err != nil {
+		slog.WarnContext(ctx, "refresh: session not found", "session_id", sessionID)
 		return nil, terror.NewNotFoundErr("session not found", err)
 	}
 
 	if !session.IsActive() {
+		slog.WarnContext(ctx, "refresh: session is revoked", "session_id", sessionID)
 		return nil, terror.NewUnauthorizedErr("session revoked", nil)
 	}
 
-	// 3. Verify fingerprint
 	fingerprintHash := s.jwt.HashFingerprint(dto.Fingerprint)
 	if session.FingerprintHash != fingerprintHash {
+		slog.WarnContext(ctx, "refresh: fingerprint mismatch",
+			"session_id", sessionID, "account_id", session.AccountID)
 		return nil, terror.NewUnauthorizedErr("fingerprint mismatch", nil)
 	}
 
-	// 4. Get refresh pair
 	pair, err := s.sessions.GetRefreshPair(ctx, sessionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "refresh: get refresh pair failed", "session_id", sessionID, "error", err)
 		return nil, terror.NewNotFoundErr("refresh pair not found", err)
 	}
 
-	// 5. Hash and match
 	incomingHash := s.jwt.HashRefreshToken(randomPart)
 
 	switch pair.Match(incomingHash) {
 	case entity.RefreshMatchCurrent:
-		return s.rotateTokens(ctx, session, pair)
+		slog.DebugContext(ctx, "refresh: rotating tokens", "session_id", sessionID)
+		result, err := s.rotateTokens(ctx, session, pair)
+		if err != nil {
+			slog.ErrorContext(ctx, "refresh: rotate tokens failed", "session_id", sessionID, "error", err)
+			return nil, err
+		}
+		slog.InfoContext(ctx, "refresh: tokens rotated",
+			"session_id", sessionID, "account_id", session.AccountID)
+		return result, nil
 
 	case entity.RefreshMatchPrev:
-		// Grace period - rotate without overwriting prev
-		return s.rotateTokensGrace(ctx, session, pair)
+		slog.DebugContext(ctx, "refresh: grace period rotation", "session_id", sessionID)
+		result, err := s.rotateTokensGrace(ctx, session, pair)
+		if err != nil {
+			slog.ErrorContext(ctx, "refresh: grace rotation failed", "session_id", sessionID, "error", err)
+			return nil, err
+		}
+		slog.InfoContext(ctx, "refresh: grace rotation success",
+			"session_id", sessionID, "account_id", session.AccountID)
+		return result, nil
 
 	case entity.RefreshMatchNone:
-		// Reuse attack - revoke session
+		slog.WarnContext(ctx, "refresh: token reuse detected — revoking session",
+			"session_id", sessionID, "account_id", session.AccountID)
 		_ = s.sessions.Revoke(ctx, sessionID, session.AccountID)
 		return nil, terror.NewUnauthorizedErr("token reuse detected", nil)
 	}

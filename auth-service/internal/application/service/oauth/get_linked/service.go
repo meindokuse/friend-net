@@ -2,6 +2,7 @@ package get_linked
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 )
@@ -35,8 +36,11 @@ type LinkedAccount struct {
 
 // GetLinked returns all linked OAuth accounts
 func (s *Service) GetLinked(ctx context.Context, accountID string) ([]LinkedAccount, error) {
+	slog.DebugContext(ctx, "get-linked: fetching", "account_id", accountID)
+
 	accounts, err := s.oauth.GetByAccountID(ctx, accountID)
 	if err != nil {
+		slog.ErrorContext(ctx, "get-linked: storage error", "account_id", accountID, "error", err)
 		return nil, err
 	}
 
@@ -50,5 +54,6 @@ func (s *Service) GetLinked(ctx context.Context, accountID string) ([]LinkedAcco
 		})
 	}
 
+	slog.DebugContext(ctx, "get-linked: done", "account_id", accountID, "count", len(result))
 	return result, nil
 }

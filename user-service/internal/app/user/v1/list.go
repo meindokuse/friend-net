@@ -17,7 +17,7 @@ func (i *Implementation) ListUsers(w http.ResponseWriter, r *http.Request) {
 	if raw := q.Get("cursor"); raw != "" {
 		b, err := base64.URLEncoding.DecodeString(raw)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid cursor")
+			writeError(w, r, http.StatusBadRequest, "invalid cursor")
 			return
 		}
 		var payload struct {
@@ -25,7 +25,7 @@ func (i *Implementation) ListUsers(w http.ResponseWriter, r *http.Request) {
 			ID       uuid.UUID `json:"id"`
 		}
 		if err := json.Unmarshal(b, &payload); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid cursor")
+			writeError(w, r, http.StatusBadRequest, "invalid cursor")
 			return
 		}
 		params.Cursor = &entity.UsernameCursor{Username: payload.Username, ID: payload.ID}
@@ -33,7 +33,7 @@ func (i *Implementation) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	_, paged, err := i.services.ListUsers.Execute(r.Context(), params)
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 

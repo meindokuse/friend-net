@@ -9,7 +9,7 @@ import (
 func (i *Implementation) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromCtx(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var req struct {
@@ -21,7 +21,7 @@ func (i *Implementation) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		Version           int    `json:"version"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, r, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	u, err := i.services.UpdateSettings.Execute(r.Context(), update_settings.Input{
@@ -34,7 +34,7 @@ func (i *Implementation) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		Version:           req.Version,
 	})
 	if err != nil {
-		writeUsecaseError(w, err)
+		writeUsecaseError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toUserResponse(u))

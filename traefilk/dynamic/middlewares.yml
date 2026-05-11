@@ -1,11 +1,12 @@
 http:
   middlewares:
     # Rate limiting
-    rate-limit:
+    api-rate-limit:
       rateLimit:
         average: 100
         burst: 50
-        period: 1s
+
+
 
     # CORS
     cors-headers:
@@ -34,10 +35,10 @@ http:
         contentTypeNosniff: true
         forceSTSHeader: true
         stsSeconds: 31536000
-    
+
     jwt-auth:
       forwardAuth:
-        address: "http://auth-service:8000/auth/verify"
+        address: "http://auth-service:8000/auth/validate"
         trustForwardHeader: true
         authResponseHeaders:
           - "X-User-ID"
