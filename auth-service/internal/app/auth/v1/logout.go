@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -117,13 +118,16 @@ func (i *Implementation) Introspect(ctx *gin.Context) {
 
 func (i *Implementation) requireAuth(ctx *gin.Context) (string, bool) {
 	accessToken := extractBearerToken(ctx.GetHeader("Authorization"))
+	slog.DebugContext(ctx,"requireAuth start")
 	if accessToken == "" {
+		slog.DebugContext(ctx,"missing token")
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 		return "", false
 	}
 
 	result, err := i.services.Introspect.Introspect(ctx.Request.Context(), accessToken)
 	if err != nil || !result.Active {
+		slog.DebugContext(ctx,"invalid token")
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return "", false
 	}

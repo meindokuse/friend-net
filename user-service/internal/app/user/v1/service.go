@@ -34,7 +34,7 @@ func (i *Implementation) Router() *chi.Mux {
 		r.Post("/batch", i.GetUsersByIDs)
 		r.Post("/", i.CreateUser)
 		r.Group(func(r chi.Router) {
-			r.Use(i.AuthMiddleware)
+			r.Use(ExtractUserIDMiddleware)
 			r.Get("/me", i.GetMe)
 			r.Delete("/me", i.DeleteMe)
 			r.Patch("/me/profile", i.UpdateProfile)
@@ -98,26 +98,50 @@ type contextKey string
 
 const userIDKey contextKey = "user_id"
 
-func (i *Implementation) AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header := r.Header.Get("X-User-ID")
-		if header == "" {
-			writeError(w, r, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		id, err := uuid.Parse(header)
-		if err != nil {
-			writeError(w, r, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		ctx := context.WithValue(r.Context(), userIDKey, id)
-		ctx = logger.WithUserIDEntry(ctx, id.String())
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
+// func (i *Implementation) AuthMiddleware(next http.Handler) http.Handler {
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		header := r.Header.Get("X-User-ID")
+// 		if header == "" {
+// 			writeError(w, r, http.StatusUnauthorized, "unauthorized")
+// 			return
+// 		}
+// 		id, err := uuid.Parse(header)
+// 		if err != nil {
+// 			writeError(w, r, http.StatusUnauthorized, "unauthorized")
+// 			return
+// 		}
+// 		ctx := context.WithValue(r.Context(), userIDKey, id)
+// 		ctx = logger.WithUserIDEntry(ctx, id.String())
+// 		next.ServeHTTP(w, r.WithContext(ctx))
+// 	})
+// }
 
 func userIDFromCtx(r *http.Request) (uuid.UUID, bool) {
 	v := r.Context().Value(userIDKey)
 	id, ok := v.(uuid.UUID)
 	return id, ok
+}
+
+func ExtractUserIDMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Достаем то, что прислал Traefik
+        headerID := r.Header.Get("X-Account-Id")
+        if headerID == "" {
+			slog.WarnContext(r.Context(),"miss user-data")
+            next.ServeHTTP(w, r)
+            return
+        }
+
+        // Парсим строку в uuid.UUID
+        id, err := uuid.Parse(headerID)
+        if err != nil {
+			slog.WarnContext(r.Context(),"error user-data parse")
+            next.ServeHTTP(w, r)
+            return
+        }
+
+        // Кладем в контекст
+        ctx := context.WithValue(r.Context(), userIDKey, id)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
 }

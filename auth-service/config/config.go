@@ -17,31 +17,40 @@ var (
 
 // Instance returns singleton config instance
 func Instance() *Config {
-	once.Do(func() {
-		instance = &Config{}
+    once.Do(func() {
+        instance = &Config{}
 
-		configPath := os.Getenv("CONFIG_PATH")
-		if configPath == "" {
-			configPath = "config/config.yaml"
-		}
+        configPath := os.Getenv("CONFIG_PATH")
+        if configPath == "" {
+            configPath = "config/config.yaml"
+        }
 
-		if _, err := os.Stat(configPath); err == nil {
-			if err := cleanenv.ReadConfig(configPath, instance); err != nil {
-				log.Fatalf("read config file %s error: %s", configPath, err.Error())
-			}
-		} else {
-			if err := cleanenv.ReadEnv(instance); err != nil {
-				log.Fatalf("read env error: %s", err.Error())
-			}
-		}
-	})
+        // Проверяем, существует ли файл
+        if _, err := os.Stat(configPath); err == nil {
+            fmt.Printf("--- Reading Config File: %s ---\n", configPath)
+            // ReadConfig в чистом виде приоритезирует файл, 
+            // но если поля в YAML нет, он смотрит на тег env:
+            if err := cleanenv.ReadConfig(configPath, instance); err != nil {
+                log.Fatalf("config error: %s", err)
+            }
+        } else {
+            fmt.Println("--- Config file not found, reading only from Env ---")
+            if err := cleanenv.ReadEnv(instance); err != nil {
+                log.Fatalf("env error: %s", err)
+            }
+        }
 
-	return instance
+        // ВАЖНО: Если ты хочешь, чтобы переменные из .env 
+        // ВСЕГДА перекрывали то, что написано в YAML:
+        cleanenv.UpdateEnv(instance) 
+    })
+
+    return instance
 }
 
 // ServerConfig - HTTP server configuration
 type ServerConfig struct {
-	HTTPAddr        string `yaml:"httpAddr"        env:"HTTP_ADDR"        env-default:":8080"`
+	HTTPAddr        string `yaml:"httpAddr"        env:"HTTP_ADDR"        env-default:":8082"`
 	ShutdownTimeout string `yaml:"shutdownTimeout" env:"SHUTDOWN_TIMEOUT" env-default:"10s"`
 }
 

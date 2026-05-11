@@ -1,0 +1,71 @@
+http:
+  middlewares:
+    # Rate limiting
+    api-rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+
+
+
+    # CORS
+    cors-headers:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Request-ID
+        accessControlAllowOriginList:
+          - "https://yourdomain.com"
+          - "http://localhost:3000"
+        accessControlMaxAge: 100
+        addVaryHeader: true
+
+    # Добавление заголовков безопасности
+    security-headers:
+      headers:
+        frameDeny: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsSeconds: 31536000
+
+    jwt-auth:
+      forwardAuth:
+        address: "http://auth-service-auth-service-new-1:8080/auth/validate"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "X-Account-ID"
+
+    # Стриппинг префикса /api/v1/users -> /
+    strip-users-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1/users"
+
+    strip-orders-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1/orders"
+
+    strip-products-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1/products"
+
+    # Retry
+    retry-middleware:
+      retry:
+        attempts: 3
+        initialInterval: 100ms
+
+    # Circuit breaker
+    circuit-breaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.30 || ResponseCodeRatio(500, 600, 0, 600) > 0.25"

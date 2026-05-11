@@ -1,0 +1,18 @@
+entryPoints:
+  web:
+    address: ":80"
+
+api:
+  dashboard: true
+  insecure: true
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: "traefik-net"
+    # Добавьте эту строку, чтобы Traefik использовал современный API
+    httpClientTimeout: 300s
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true

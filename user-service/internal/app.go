@@ -32,7 +32,7 @@ func New(_ context.Context) *App {
 }
 
 func (a *App) Run(ctx context.Context) {
-	logger.Init(a.cfg.Logger.Level)
+	logger.Init("debug")
 
 	if err := a.init(ctx); err != nil {
 		slog.ErrorContext(ctx, "init failed", "error", err)

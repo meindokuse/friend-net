@@ -1,0 +1,29 @@
+services:
+
+  traefik:
+    image: traefik:v2.11
+    command:
+      - "--log.level=DEBUG"             # Видеть всё: от загрузки конфигов до матчинга роутеров
+      - "--accesslog=true"              # Включить логи каждого запроса
+      - "--accesslog.format=common"     # Обычный текстовый формат (проще читать в терминале)
+      - "--api.insecure=true"           # Чтобы дашборд работал
+      - "--providers.docker=true"
+      - "--providers.file.directory=/etc/traefik/dynamic" # Убедись, что путь верный
+    container_name: traefik
+    environment:
+      # Это заставит внутренний клиент Traefik использовать API 1.41,
+      # который точно поддерживается твоим демоном (у тебя мин. 1.40)
+      - DOCKER_API_VERSION=1.41 
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - traefik-net
+
+networks:
+  traefik-net:
+    external: true

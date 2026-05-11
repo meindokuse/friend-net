@@ -3,8 +3,8 @@ version: "3.8"
 services:
   user-service:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: user-service/Dockerfile
 #    ports:
 #      - "8081:8081"
     environment:
@@ -21,13 +21,24 @@ services:
         condition: service_healthy
     networks:
       - user-network
+      - traefik-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.users-public.rule=Host(`api.example.com`) && (Path(`/users`) && Method(`POST`) || PathPrefix(`/users/search`))"
-      - "traefik.http.routers.users-private.rule=Host(`api.example.com`) && PathPrefix(`/users`)"
+      
+      # --- PUBLIC ROUTER (Регистрация и Поиск) ---
+      - "traefik.http.routers.users-public.rule=Host(`localhost`) && ( (Path(`/users`) && Method(`POST`)) || PathPrefix(`/users/search`) || PathPrefix(`/users/username/`) )"
+      - "traefik.http.routers.users-public.priority=100"
+      - "traefik.http.routers.users-public.entrypoints=web"
+
+      # --- PRIVATE ROUTER (Всё остальное: /users/me, /users/{id} и т.д.) ---
+      - "traefik.http.routers.users-private.rule=Host(`localhost`) && PathPrefix(`/users`)"
       - "traefik.http.routers.users-private.priority=1"
+      - "traefik.http.routers.users-private.entrypoints=web"
+      
+      # Навешиваем проверку токена только на приватный роутер
       - "traefik.http.routers.users-private.middlewares=jwt-auth@file,api-rate-limit@file"
-      - "traefik.http.services.users.loadbalancer.server.port=8081" # Порт ВНУТРИ контейнера
+      
+      - "traefik.http.services.users.loadbalancer.server.port=8081"
 
   mongo:
     image: mongo:7
@@ -44,3 +55,5 @@ services:
 networks:
   user-network:
     driver: bridge
+  traefik-net:
+    external: true
