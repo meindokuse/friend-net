@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +17,14 @@ import (
 	vo "github.com/meindokuse/cloud-drive/user-service-new/internal/domain/value_object"
 	"github.com/meindokuse/cloud-drive/user-service-new/internal/infrastructure/storage/user/dao"
 )
+
+// paginationIndex is the compound index that backs both List and Search.
+// Sort order must stay in sync with SetSort calls below.
+var paginationIndex = bson.D{
+	{Key: "deleted_at", Value: 1},
+	{Key: "username", Value: 1},
+	{Key: "_id", Value: 1},
+}
 
 type Storage struct {
 	collection *mongo.Collection
@@ -35,6 +44,13 @@ func (s *Storage) ensureIndexes(ctx context.Context) error {
 		{Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
 		{Keys: bson.D{{Key: "phone", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
 		{Keys: bson.D{{Key: "deleted_at", Value: 1}}},
+		{
+            Keys: bson.D{
+                {Key: "deleted_at", Value: 1}, 
+                {Key: "username", Value: 1}, 
+                {Key: "_id", Value: 1},
+            },
+        },
 	})
 	return err
 }
@@ -203,39 +219,72 @@ func (s *Storage) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*entity.User
 	return out, nil
 }
 
-func (s *Storage) Search(ctx context.Context, query string, limit, offset int) ([]*entity.User, error) {
+func (s *Storage) Search(ctx context.Context, params entity.SearchParams) ([]*entity.User, entity.PagedSearchUsers, error) {
+	limit := params.Limit
 	if limit <= 0 {
 		limit = 20
 	}
 	if limit > 100 {
 		limit = 100
 	}
-	if offset < 0 {
-		offset = 0
-	}
 	start := time.Now()
-	filter := activeFilter(bson.M{"$or": []bson.M{
-		{"username": bson.M{"$regex": query, "$options": "i"}},
-		{"display_name": bson.M{"$regex": query, "$options": "i"}},
-	}})
-	opts := options.Find().SetSort(bson.D{{Key: "username", Value: 1}}).SetLimit(int64(limit)).SetSkip(int64(offset))
+
+	safeQuery := regexp.QuoteMeta(params.Query)
+	matchFilter := bson.M{"$or": []bson.M{
+		{"username": bson.M{"$regex": "^" + safeQuery, "$options": "i"}},
+		{"display_name": bson.M{"$regex": safeQuery, "$options": "i"}},
+	}}
+
+	var filter bson.M
+	if params.Cursor == nil {
+		filter = activeFilter(matchFilter)
+	} else {
+		filter = bson.M{
+			"deleted_at": bson.M{"$eq": nil},
+			"$and": []bson.M{
+				matchFilter,
+				{"$or": []bson.M{
+					{"username": bson.M{"$gt": params.Cursor.Username}},
+					{"$and": []bson.M{
+						{"username": params.Cursor.Username},
+						{"_id": bson.M{"$gt": params.Cursor.ID}},
+					}},
+				}},
+			},
+		}
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "username", Value: 1}, {Key: "_id", Value: 1}}).
+		SetLimit(int64(limit + 1)).
+		SetHint(paginationIndex)
 	cur, err := s.collection.Find(ctx, filter, opts)
 	if err != nil {
 		s.logOp(ctx, "find", start, err)
-		return nil, err
+		return nil, entity.PagedSearchUsers{}, err
 	}
 	defer cur.Close(ctx)
 	var docs []dao.User
 	if err := cur.All(ctx, &docs); err != nil {
 		s.logOp(ctx, "find", start, err)
-		return nil, err
+		return nil, entity.PagedSearchUsers{}, err
 	}
 	s.logOp(ctx, "find", start, nil)
+
+	hasMore := len(docs) > limit
+	if hasMore {
+		docs = docs[:limit]
+	}
 	out := make([]*entity.User, 0, len(docs))
 	for i := range docs {
 		out = append(out, docs[i].ConvertTo())
 	}
-	return out, nil
+	paged := entity.PagedSearchUsers{Items: out, HasMore: hasMore}
+	if hasMore && len(docs) > 0 {
+		last := docs[len(docs)-1]
+		paged.NextCursor = entity.SearchCursor{Username: last.Username, ID: last.ID}
+	}
+	return out, paged, nil
 }
 
 func (s *Storage) List(ctx context.Context, params entity.ListParams) ([]*entity.User, entity.PagedUsers, error) {
@@ -247,19 +296,25 @@ func (s *Storage) List(ctx context.Context, params entity.ListParams) ([]*entity
 		limit = 100
 	}
 	start := time.Now()
-	filter := activeFilter(bson.M{})
-	if params.Cursor != nil {
-		filter = activeFilter(bson.M{"$or": []bson.M{
-			{"username": bson.M{"$gt": params.Cursor.Username}},
-			{"$and": []bson.M{
-				{"username": params.Cursor.Username},
-				{"_id": bson.M{"$gt": params.Cursor.ID}},
-			}},
-		}})
+	var filter bson.M
+	if params.Cursor == nil {
+		filter = activeFilter(bson.M{})
+	} else {
+		filter = bson.M{
+			"deleted_at": bson.M{"$eq": nil},
+			"$or": []bson.M{
+				{"username": bson.M{"$gt": params.Cursor.Username}},
+				{"$and": []bson.M{
+					{"username": params.Cursor.Username},
+					{"_id": bson.M{"$gt": params.Cursor.ID}},
+				}},
+			},
+		}
 	}
 	opts := options.Find().
 		SetSort(bson.D{{Key: "username", Value: 1}, {Key: "_id", Value: 1}}).
-		SetLimit(int64(limit + 1))
+		SetLimit(int64(limit + 1)).
+		SetHint(paginationIndex)
 	cur, err := s.collection.Find(ctx, filter, opts)
 	if err != nil {
 		s.logOp(ctx, "find", start, err)
