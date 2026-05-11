@@ -183,3 +183,18 @@ type PagedUsers struct {
 	NextCursor UsernameCursor
 	HasMore    bool
 }
+
+type SearchCursor struct {
+	Username string
+	ID       uuid.UUID
+}
+type SearchParams struct {
+	Query  string
+	Limit  int
+	Cursor *SearchCursor
+}
+type PagedSearchUsers struct {
+	Items      []*User
+	NextCursor SearchCursor
+	HasMore    bool
+}
