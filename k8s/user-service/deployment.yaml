@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: friend-net
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: user-service:latest      # REPLACE: registry/user-service:<tag>
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: user-service-config
+          # Нет /healthz — добавь эндпоинт в user-service, затем раскомментируй пробы
+          # readinessProbe:
+          #   httpGet:
+          #     path: /healthz
+          #     port: 8081
+          #   initialDelaySeconds: 5
+          #   periodSeconds: 10
+          # livenessProbe:
+          #   httpGet:
+          #     path: /healthz
+          #     port: 8081
+          #   initialDelaySeconds: 15
+          #   periodSeconds: 20
+          readinessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

@@ -1,0 +1,31 @@
+# ClusterIP — точка входа для продюсеров/консьюмеров
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: friend-net
+spec:
+  selector:
+    app: kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+---
+# Headless — даёт pod-level DNS (kafka-0.kafka-headless) нужен для KRaft quorum
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: friend-net
+spec:
+  clusterIP: None
+  selector:
+    app: kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+    - name: controller
+      port: 9093
+      targetPort: 9093

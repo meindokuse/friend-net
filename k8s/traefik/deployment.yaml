@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: friend-net
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik
+      containers:
+        - name: traefik
+          image: traefik:v2.11
+          args:
+            - --log.level=INFO
+            - --accesslog=true
+            - --api.dashboard=true
+            - --api.insecure=true
+            # k8s CRD provider (IngressRoute, Middleware и т.д.)
+            - --providers.kubernetescrd=true
+            - --providers.kubernetescrd.namespaces=friend-net
+            # стандартный Ingress provider (опционально)
+            - --providers.kubernetesingress=true
+            - --providers.kubernetesingress.namespaces=friend-net
+            - --entrypoints.web.address=:80
+            - --entrypoints.traefik.address=:8080
+          ports:
+            - name: web
+              containerPort: 80
+            - name: dashboard
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi

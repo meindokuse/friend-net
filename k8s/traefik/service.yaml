@@ -1,0 +1,29 @@
+# Внешний трафик: порт 80
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: friend-net
+spec:
+  type: LoadBalancer
+  selector:
+    app: traefik
+  ports:
+    - name: web
+      port: 80
+      targetPort: 80
+---
+# Дашборд (только внутри кластера или через kubectl port-forward)
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-dashboard
+  namespace: friend-net
+spec:
+  type: ClusterIP
+  selector:
+    app: traefik
+  ports:
+    - name: dashboard
+      port: 8080
+      targetPort: 8080

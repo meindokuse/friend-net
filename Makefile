@@ -21,6 +21,7 @@ up: network
 
 # 3. Остановка всего
 down:
+	$(DC_INFRA) down
 	$(DC_USER) down
 	$(DC_AUTH) down
 	$(DC_TRAEFIK) down
