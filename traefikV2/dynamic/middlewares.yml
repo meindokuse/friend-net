@@ -38,7 +38,7 @@ http:
 
     jwt-auth:
       forwardAuth:
-        address: "http://auth-service-auth-service-new-1:8080/auth/validate"
+        address: "http://auth-service-auth-service-1:8080/auth/validate"
         trustForwardHeader: true
         authResponseHeaders:
           - "X-Account-ID"
