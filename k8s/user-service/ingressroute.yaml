@@ -1,6 +1,24 @@
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
+  name: users-preflight
+  namespace: friend-net
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: "PathPrefix(`/users`) && Method(`OPTIONS`)"
+      kind: Rule
+      priority: 200
+      middlewares:
+        - name: cors
+      services:
+        - name: user-service
+          port: 8081
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
   name: users-public
   namespace: friend-net
 spec:
@@ -11,6 +29,8 @@ spec:
     - match: "(Path(`/users`) && Method(`POST`)) || PathPrefix(`/users/search`) || PathPrefix(`/users/username/`)"
       kind: Rule
       priority: 100
+      middlewares:
+        - name: cors
       services:
         - name: user-service
           port: 8081
@@ -28,6 +48,7 @@ spec:
       kind: Rule
       priority: 1
       middlewares:
+        - name: cors
         - name: jwt-auth
         - name: api-rate-limit
       services:

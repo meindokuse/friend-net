@@ -3,8 +3,9 @@
 // account_id from the token, and injects X-Account-Id into the upstream request.
 // We only need to send Authorization: Bearer <token> — Traefik does the rest.
 
-const AUTH_BASE = '/auth'
-const USERS_BASE = '/users'
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://192.168.49.2:32610'
+const AUTH_BASE = `${API_BASE}/auth`
+const USERS_BASE = `${API_BASE}/users`
 
 export async function apiFetch(
   url: string,

@@ -30,8 +30,6 @@ spec:
       containers:
         - name: auth-service
           image: meindokuse/auth-service:latest
-          imagePullPolicy: Never
-          # Sourcing /vault/secrets/env экспортирует переменные в процесс бинаря
           command: ["sh", "-c"]
           args:
             - "set -a && . /vault/secrets/env && set +a && exec /app/auth-service"

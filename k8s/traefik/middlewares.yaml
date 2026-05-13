@@ -23,3 +23,27 @@ spec:
   rateLimit:
     average: 100
     burst: 50
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: cors
+  namespace: friend-net
+spec:
+  headers:
+    accessControlAllowMethods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - OPTIONS
+    accessControlAllowHeaders:
+      - Content-Type
+      - Authorization
+      - X-Refresh-Token
+    accessControlAllowOriginList:
+      - "http://localhost:5173"
+      - "http://localhost:5174"
+    accessControlMaxAge: 300
+    addVaryHeader: true
