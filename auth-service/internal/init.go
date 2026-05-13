@@ -10,9 +10,9 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/meindokuse/cloud-drive/auth-service-new/config"
+	appmiddleware "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/middleware"
 	authv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/auth/v1"
 	oauthv1 "github.com/meindokuse/cloud-drive/auth-service-new/internal/app/oauth/v1"
 	authservice "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth"
@@ -26,12 +26,10 @@ import (
 	redisconn "github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/connector/redis"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/event/flusher/platform"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/jwt"
-	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/logger"
 	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/pass"
 )
 
 func (a *App) init(ctx context.Context) error {
-	logger.Init("info")
 	if err := a.initPostgres(ctx); err != nil {
 		return err
 	}
@@ -133,59 +131,17 @@ func (a *App) initServices() {
 	)
 }
 
-func loggingMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		traceID := uuid.NewString()
-
-		ctx := logger.InitRequestContext(c.Request.Context(), traceID, c.FullPath())
-		c.Request = c.Request.WithContext(ctx)
-		c.Header("X-Trace-Id", traceID)
-		
-
-		slog.DebugContext(ctx, "request started",
-			"method", c.Request.Method,
-			"path", c.FullPath(),
-			"remote_addr", c.ClientIP(),
-		)
-
-		c.Next()
-
-		status := c.Writer.Status()
-		duration := time.Since(start)
-
-		// Enrich with user_id after handlers run (set by authMiddleware)
-		finalCtx := ctx
-		if accountID, exists := c.Get("account_id"); exists {
-			if id, ok := accountID.(string); ok && id != "" {
-				finalCtx = logger.WithUserIDEntry(finalCtx, id)
-			}
-		}
-
-		lvl := slog.LevelInfo
-		if status >= 500 {
-			lvl = slog.LevelError
-		} else if status >= 400 {
-			lvl = slog.LevelWarn
-		}
-
-		slog.Log(finalCtx, lvl, "request completed",
-			"method", c.Request.Method,
-			"path", c.FullPath(),
-			"status", status,
-			"duration_ms", duration.Milliseconds(),
-		)
-	}
-}
-
 func (a *App) initHTTPServer(_ context.Context) error {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(loggingMiddleware())
+	router.Use(appmiddleware.Logging())
 
 	corsConfig := config.DefaultCORSConfig()
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     corsConfig.AllowOrigins,
+		AllowOriginFunc: func(origin string) bool {
+			return strings.HasPrefix(origin, "http://localhost") ||
+				strings.HasPrefix(origin, "http://127.0.0.1")
+		},
 		AllowMethods:     corsConfig.AllowMethods,
 		AllowHeaders:     corsConfig.AllowHeaders,
 		AllowCredentials: corsConfig.AllowCredentials,
@@ -198,28 +154,36 @@ func (a *App) initHTTPServer(_ context.Context) error {
 	})
 
 	authHandler := authv1.NewAuthService(a.authServices, a.cfg.Controller)
-	authGroup := router.Group("/auth")
-	authGroup.POST("/register", authHandler.Register)
-	authGroup.POST("/login", authHandler.Login)
-	authGroup.POST("/refresh", authHandler.Refresh)
-	authGroup.POST("/logout", authHandler.Logout)
-	authGroup.POST("/logout-all", authHandler.LogoutAll)
-	authGroup.GET("/sessions", authHandler.Sessions)
-	authGroup.DELETE("/sessions/:session_id", authHandler.RevokeSession)
-	authGroup.POST("/introspect", authHandler.Introspect)
-	authGroup.GET("/validate", authHandler.Validate)
-
 	oauthHandler := oauthv1.NewOAuthService(a.oauthServices, a.oauthGateway.Google, a.cfg.Controller)
-	oauthGroup := router.Group("/auth")
-	oauthGroup.GET("/google", oauthHandler.GoogleAuth)
-	oauthGroup.GET("/google/callback", oauthHandler.GoogleCallback)
 
-	oauthProtected := router.Group("/auth")
-	// oauthProtected.Use(a.authMiddleware())
-	oauthProtected.GET("/link/google", oauthHandler.LinkGoogle)
-	oauthProtected.GET("/link/google/callback", oauthHandler.LinkGoogleCallback)
-	oauthProtected.GET("/linked", oauthHandler.GetLinkedAccounts)
-	oauthProtected.DELETE("/linked/:provider", oauthHandler.Unlink)
+	// --- Public auth routes (no JWT required) ---
+	authPublic := router.Group("/auth")
+	authPublic.POST("/register", authHandler.Register)
+	authPublic.POST("/login", authHandler.Login)
+	authPublic.POST("/refresh", authHandler.Refresh)
+	authPublic.POST("/introspect", authHandler.Introspect)
+	authPublic.GET("/validate", authHandler.Validate)
+
+	// --- Private auth routes (Traefik validates JWT, X-Account-ID forwarded) ---
+	authPrivate := router.Group("/auth")
+	authPrivate.Use(appmiddleware.RequireAccountID())
+	authPrivate.POST("/logout", authHandler.Logout)
+	authPrivate.POST("/logout-all", authHandler.LogoutAll)
+	authPrivate.GET("/sessions", authHandler.Sessions)
+	authPrivate.DELETE("/sessions/:session_id", authHandler.RevokeSession)
+
+	// --- Public OAuth routes ---
+	oauthPublic := router.Group("/auth")
+	oauthPublic.GET("/google", oauthHandler.GoogleAuth)
+	oauthPublic.GET("/google/callback", oauthHandler.GoogleCallback)
+
+	// --- Private OAuth routes (Traefik validates JWT, X-Account-ID forwarded) ---
+	oauthPrivate := router.Group("/auth")
+	oauthPrivate.Use(appmiddleware.RequireAccountID())
+	oauthPrivate.GET("/link/google", oauthHandler.LinkGoogle)
+	oauthPrivate.GET("/link/google/callback", oauthHandler.LinkGoogleCallback)
+	oauthPrivate.GET("/linked", oauthHandler.GetLinkedAccounts)
+	oauthPrivate.DELETE("/linked/:provider", oauthHandler.Unlink)
 
 	a.httpServer = &http.Server{
 		Addr:              a.cfg.Server.HTTPAddr,
@@ -253,43 +217,6 @@ func (a *App) initFlusher(ctx context.Context) {
 	a.flushCancel = cancel
 
 	go f.Start(flushCtx)
-}
-
-func (a *App) authMiddleware() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		accessToken := extractBearerToken(ctx.GetHeader("Authorization"))
-		if accessToken == "" {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
-			return
-		}
-
-		result, err := a.authServices.Introspect.Introspect(ctx.Request.Context(), accessToken)
-		if err != nil || !result.Active {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		ctx.Set("account_id", result.AccountID)
-		ctx.Set("session_id", result.SessionID)
-
-		// Propagate user_id into request context so service-level logs include it.
-		enriched := logger.WithUserIDEntry(ctx.Request.Context(), result.AccountID)
-		ctx.Request = ctx.Request.WithContext(enriched)
-
-		ctx.Next()
-	}
-}
-
-func extractBearerToken(authHeader string) string {
-	value := strings.TrimSpace(authHeader)
-	if value == "" {
-		return ""
-	}
-	parts := strings.SplitN(value, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return ""
-	}
-	return strings.TrimSpace(parts[1])
 }
 
 // oauthProviderAdapter adapts oauth.GoogleClient to providers.OAuthProviderGateway.

@@ -5,8 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/app/middleware"
 	oauthlink "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/link"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/domain/entity"
 )
 
 // LinkGoogle handles GET /auth/link/google
@@ -23,11 +24,7 @@ func (i *Implementation) LinkGoogle(ctx *gin.Context) {
 
 // LinkGoogleCallback handles GET /auth/link/google/callback
 func (i *Implementation) LinkGoogleCallback(ctx *gin.Context) {
-	accountID, ok := ctx.Get("account_id")
-	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
+	accountID := ctx.GetString(middleware.AccountIDKey)
 
 	code := ctx.Query("code")
 	state := ctx.Query("state")
@@ -40,7 +37,7 @@ func (i *Implementation) LinkGoogleCallback(ctx *gin.Context) {
 		Provider:  entity.OAuthGoogle,
 		Code:      code,
 		State:     state,
-		AccountID: accountID.(string),
+		AccountID: accountID,
 	}
 
 	if err := i.services.Link.Link(ctx.Request.Context(), dto); err != nil {
@@ -54,13 +51,9 @@ func (i *Implementation) LinkGoogleCallback(ctx *gin.Context) {
 
 // GetLinkedAccounts handles GET /auth/linked
 func (i *Implementation) GetLinkedAccounts(ctx *gin.Context) {
-	accountID, ok := ctx.Get("account_id")
-	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
+	accountID := ctx.GetString(middleware.AccountIDKey)
 
-	accounts, err := i.services.GetLinked.GetLinked(ctx.Request.Context(), accountID.(string))
+	accounts, err := i.services.GetLinked.GetLinked(ctx.Request.Context(), accountID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -71,14 +64,10 @@ func (i *Implementation) GetLinkedAccounts(ctx *gin.Context) {
 
 // Unlink handles DELETE /auth/linked/:provider
 func (i *Implementation) Unlink(ctx *gin.Context) {
-	accountID, ok := ctx.Get("account_id")
-	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
+	accountID := ctx.GetString(middleware.AccountIDKey)
 
 	provider := entity.OAuthProvider(ctx.Param("provider"))
-	if err := i.services.Unlink.Unlink(ctx.Request.Context(), accountID.(string), provider); err != nil {
+	if err := i.services.Unlink.Unlink(ctx.Request.Context(), accountID, provider); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

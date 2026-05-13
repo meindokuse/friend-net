@@ -43,6 +43,7 @@ http:
         trustForwardHeader: true
         authResponseHeaders:
           - "X-Account-ID"
+          - "X-Session-ID"
 
     # Стриппинг префикса /api/v1/users -> /
     strip-users-prefix:

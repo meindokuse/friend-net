@@ -1,261 +1,253 @@
-# Kubernetes — запуск friend-net
-
-## Архитектура
-
-```
-Internet :80
-    │
-    ▼
-Traefik (LoadBalancer)
-    ├── /auth/*  ──► auth-service:8080
-    │                  публичные: /register /login /refresh /introspect /google/*
-    │                  приватные: jwt-auth middleware → /auth/validate → X-Account-ID
-    └── /users/* ──► user-service:8081
-                       jwt-auth + rate-limit
-
-auth-service ─── Kafka (accounts.events) ──► user-service
-     │
-     └── Postgres (outbox + accounts) + Redis (sessions)
-```
-
-### Неймспейс: `friend-net`
-
-| Ресурс | Тип | Реплики | Порт |
-|--------|-----|---------|------|
-| traefik | Deployment | 1 | 80 (LB) |
-| auth-service | Deployment | 2 | 8080 |
-| user-service | Deployment | 2 | 8081 |
-| postgres | StatefulSet | 1 | 5432 |
-| mongodb | StatefulSet | 1 | 27017 |
-| redis | Deployment | 1 | 6379 |
-| kafka | StatefulSet | 1 | 9092/9093 |
-
-Persistent storage: postgres 5Gi, mongodb 5Gi, redis 1Gi, kafka 10Gi — итого ~21Gi.
-
----
-
-## Блокеры — без этого запуск невозможен
-
-| # | Проблема | Файл | Что сделать |
-|---|----------|------|-------------|
-| 1 | `kubectl`, `minikube` не установлены | — | см. Шаг 0 |
-| 2 | Образы `auth-service:latest` / `user-service:latest` не собраны | `*/deployment.yaml` | см. Шаг 2 |
-| 3 | Endpoint `/auth/validate` отсутствует в коде | `traefik/middlewares.yaml` | добавить хэндлер или поменять адрес на `/auth/introspect` |
-| 4 | Секреты — плейсхолдеры (`your-secret-key...`) | `auth-service/secret.yaml` | заполнить реальными значениями |
+● Теперь у меня полная картина. Составлю подробный гайд.
+
+  ---
+  Обзор проекта и полный гайд по Kubernetes
+
+  Что из себя представляет проект
+
+  Browser → Traefik (:80)
+                ├── /auth/*  → auth-service (:8080)   [Gin, Postgres, Redis, Kafka producer]
+                └── /users/* → user-service (:8081)   [chi, MongoDB, Kafka consumer]
+
+  auth-service ──Kafka accounts.events──► user-service
+
+  auth-service — JWT-аутентификация, OAuth Google, сессии в Redis, аккаунты в Postgres. При регистрации пишет событие в outbox_events → flusher горутина
+  публикует в Kafka каждые 5 сек.
+
+  user-service — профили пользователей. Консьюмит Kafka, при AccountCreated создаёт документ в MongoDB. Идемпотентно (по account_id).
+
+  Конфигурация грузится из config/config.yaml, переменные окружения имеют приоритет. Секреты (JWT, Google OAuth, пароль PG) — только через env, не хранятся
+  в YAML.
+
+  ---
+  Состояние k8s — что есть
+
+  Структура k8s/
+
+  k8s/
+  ├── namespace.yaml           # namespace: friend-net
+  ├── traefik/                 # Traefik как ingress-контроллер
+  │   ├── deployment.yaml      # Traefik v2.11
+  │   ├── service.yaml         # LoadBalancer :80 + :8080 (dashboard)
+  │   ├── rbac.yaml            # ServiceAccount + ClusterRole (нужен для чтения CRD)
+  │   └── middlewares.yaml     # jwt-auth (forwardAuth) + api-rate-limit
+  ├── infra/
+  │   ├── postgres/            # StatefulSet + PVC 5Gi + Secret + Migration Job
+  │   ├── mongodb/             # StatefulSet + PVC 5Gi
+  │   ├── redis/               # Deployment + PVC 1Gi
+  │   └── kafka/               # StatefulSet + PVC 10Gi (KRaft, без Zookeeper)
+  ├── auth-service/
+  │   ├── deployment.yaml      # 2 реплики, healthz пробы
+  │   ├── configmap.yaml       # все env кроме секретов
+  │   ├── secret.yaml          # POSTGRES_PASSWORD, JWT_SECRET*, GOOGLE_*
+  │   ├── service.yaml         # ClusterIP :8080
+  │   └── ingressroute.yaml    # Traefik IngressRoute (CRD)
+  └── user-service/
+      ├── deployment.yaml      # 2 реплики, TCP probe (нет /healthz)
+      ├── configmap.yaml       # env
+      ├── service.yaml         # ClusterIP :8081
+      └── ingressroute.yaml    # Traefik IngressRoute (CRD)
+
+  ---
+  Блокеры — без исправлений кластер не запустится
 
----
-
-## Образы — где хранить и как собирать
+  ┌─────┬──────────────────────────────────────────────────────────────────────────┬──────────────────────────────┬─────────────────────────────┐
+  │  #  │                                 Проблема                                 │             Где              │           Статус            │
+  ├─────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────┼─────────────────────────────┤
+  │ 1   │ golang:1.25-alpine — такой версии не существует (последняя 1.23.x)       │ auth-service/Dockerfile      │ СЛОМАН                      │
+  ├─────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────┼─────────────────────────────┤
+  │ 2   │ /auth/validate — эндпоинта нет в коде, есть только POST /auth/introspect │ k8s/traefik/middlewares.yaml │ СЛОМАН                      │
+  ├─────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────┼─────────────────────────────┤
+  │ 3   │ Секреты — плейсхолдеры your-secret-key...                                │ k8s/auth-service/secret.yaml │ нужно заполнить             │
+  ├─────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────┼─────────────────────────────┤
+  │ 4   │ imagePullPolicy: Never не выставлен                                      │ оба deployment.yaml          │ нужно добавить для minikube │
+  └─────┴──────────────────────────────────────────────────────────────────────────┴──────────────────────────────┴─────────────────────────────┘
 
-### Локально (minikube) — самый простой путь
-
-```bash
-# Переключить Docker-контекст на внутренний демон minikube
-eval $(minikube docker-env)
-
-# Собрать образы — они окажутся прямо внутри кластера
-docker build -t auth-service:latest ./auth-service
-docker build -t user-service:latest ./user-service
-
-# В deployment.yaml оставить imagePullPolicy: Never (или IfNotPresent)
-# чтобы k8s не пытался тянуть образ из интернета
-```
+  Хорошие новости — kubectl и minikube уже установлены, Docker запущен. Кластер не стартован (minikube start не запускался).
 
-> После `eval $(minikube docker-env)` все `docker build/run` идут в minikube.
-> Вернуться к системному Docker: `eval $(minikube docker-env --unset)`
-
-### GitHub Container Registry (ghcr.io) — для CI/CD
-
-```bash
-# Логин
-echo $GITHUB_TOKEN | docker login ghcr.io -u meindokuse --password-stdin
-
-# Собрать и запушить
-docker build -t ghcr.io/meindokuse/friend-net/auth-service:latest ./auth-service
-docker push ghcr.io/meindokuse/friend-net/auth-service:latest
-
-docker build -t ghcr.io/meindokuse/friend-net/user-service:latest ./user-service
-docker push ghcr.io/meindokuse/friend-net/user-service:latest
-```
-
-После этого в `k8s/auth-service/deployment.yaml` поменять:
-```yaml
-image: ghcr.io/meindokuse/friend-net/auth-service:latest
-```
+  ---
+  Понятие о k8s — ликбез перед стартом
+  
+  Kubernetes (k8s) — система, которая запускает и управляет контейнерами на кластере машин.
 
-Для приватного репозитория нужен imagePullSecret:
-```bash
-kubectl create secret docker-registry ghcr-secret \
-  --docker-server=ghcr.io \
-  --docker-username=meindokuse \
-  --docker-password=$GITHUB_TOKEN \
-  -n friend-net
-```
-И добавить в deployment.yaml:
-```yaml
-spec:
-  imagePullSecrets:
-    - name: ghcr-secret
-```
+  Ключевые объекты:
 
-### Docker Hub — альтернатива
+  ┌─────────────────────────────┬────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────┐
+  │           Объект            │        Аналог из docker-compose        │                                  Что делает                                  │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ Pod                         │ контейнер                              │ минимальная единица запуска, 1+ контейнеров                                  │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ Deployment                  │ services: + replicas:                  │ поддерживает N реплик пода, умеет rolling update                             │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ StatefulSet                 │ как Deployment, но с постоянным именем │ для БД: postgres-0, kafka-0 — имя не меняется                                │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ Service                     │ ports: / networks:                     │ постоянный DNS-адрес внутри кластера (postgres.friend-net.svc.cluster.local) │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ ConfigMap                   │ environment:                           │ ненужные переменные окружения                                                │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ Secret                      │ .env файл                              │ чувствительные данные (base64-encoded)                                       │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ PersistentVolumeClaim (PVC) │ volumes:                               │ запрос на дисковое пространство                                              │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ Namespace                   │ --project-name в compose               │ изоляция ресурсов внутри кластера                                            │
+  ├─────────────────────────────┼────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+  │ IngressRoute                │ labels: traefik.*                      │ маршрутизация HTTP-трафика (CRD Traefik)                                     │
+  └─────────────────────────────┴────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────┘
 
-```bash
-docker login
-docker build -t meindokuse/auth-service:latest ./auth-service
-docker push meindokuse/auth-service:latest
-```
+  minikube — локальный одноузловой k8s кластер внутри Docker. Удобно для разработки.
 
----
+  ---
+  Полный гайд — шаг за шагом
 
-## Шаг 0 — Установить инструменты
+  Шаг 0 — Исправить Dockerfile auth-service
 
-```bash
-# kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-kubectl version --client
+  # Открой auth-service/Dockerfile и замени:
+  # FROM golang:1.25-alpine  →  FROM golang:1.23-alpine
+  sed -i 's/golang:1.25-alpine/golang:1.23-alpine/' /home/dryzer/go-projects/friend-net-1/auth-service/Dockerfile
 
-# minikube
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-sudo install minikube-linux-amd64 /usr/local/bin/minikube
-minikube version
-```
+  Шаг 1 — Добавить /auth/validate в auth-service
 
----
+  Traefik middleware делает GET /auth/validate с заголовком Authorization: Bearer <token>. В коде есть только POST /auth/introspect. Нужно добавить новый
+  обработчик (это отдельная задача — скажи, сделаю).
 
-## Шаг 1 — Запустить кластер
+  Временный обход для тестирования: убрать middlewares из ingressroute.yaml у users-private, чтобы запустить без JWT-проверки.
 
-```bash
-minikube start --driver=docker --memory=4096 --cpus=4
-minikube status
-```
+  Шаг 2 — Запустить кластер minikube
 
----
+  minikube start --driver=docker --memory=4096 --cpus=4
 
-## Шаг 2 — Собрать образы (локальный путь)
+  # Проверить статус
+  minikube status
+  kubectl get nodes
 
-```bash
-eval $(minikube docker-env)
+  ▎ Что происходит: minikube поднимает Docker-контейнер, который симулирует k8s-узел. Внутри него работает API-сервер Kubernetes, в котором мы будем 
+  ▎ создавать ресурсы.
 
-docker build -t auth-service:latest ./auth-service
-docker build -t user-service:latest ./user-service
+  Шаг 3 — Переключить Docker на minikube
 
-# Убедиться что образы видны внутри minikube
-docker images | grep -E "auth-service|user-service"
-```
+  eval $(minikube docker-env)
+  # Теперь docker build/images работают ВНУТРИ minikube
 
-Добавить `imagePullPolicy: Never` в оба deployment.yaml:
-```yaml
-containers:
-  - name: auth-service
-    image: auth-service:latest
-    imagePullPolicy: Never
-```
+  docker build -t auth-service:latest ./auth-service
+  docker build -t user-service:latest ./user-service
 
----
+  # Убедиться что образы видны
+  docker images | grep -E "auth|user"
 
-## Шаг 3 — Заполнить секреты
+  Шаг 4 — Добавить imagePullPolicy: Never
 
-Отредактировать `k8s/auth-service/secret.yaml`:
+  В k8s/auth-service/deployment.yaml и k8s/user-service/deployment.yaml под image::
 
-```yaml
-stringData:
-  POSTGRES_PASSWORD: "сюда-пароль"
-  JWT_SECRET: "минимум-32-случайных-символа"
-  JWT_REFRESH_SECRET: "другие-32-случайных-символа"
-  GOOGLE_CLIENT_ID: "реальный-id из Google Console"
-  GOOGLE_CLIENT_SECRET: "реальный-secret из Google Console"
-```
+  image: auth-service:latest
+  imagePullPolicy: Never   # ← добавить эту строку
 
-Сгенерировать случайные ключи:
-```bash
-openssl rand -base64 32   # для JWT_SECRET
-openssl rand -base64 32   # для JWT_REFRESH_SECRET
-```
+  Без этого k8s будет пытаться скачать образ из Docker Hub и не найдёт его.
 
----
+  Шаг 5 — Заполнить секреты
 
-## Шаг 4 — Установить Traefik CRDs
+  # Сгенерировать JWT ключи
+  openssl rand -base64 32
+  openssl rand -base64 32
 
-Манифесты используют `IngressRoute` и `Middleware` — это CRD от Traefik.
-Без них `kubectl apply` упадёт с `no matches for kind "IngressRoute"`.
+  Отредактировать k8s/auth-service/secret.yaml — вставить реальные значения вместо плейсхолдеров. Google OAuth можно оставить пустым если не нужен.
 
-```bash
-kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
-```
+  Шаг 6 — Установить Traefik CRDs
 
----
+  kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
 
-## Шаг 5 — Исправить /auth/validate
+  ▎ Почему: IngressRoute, Middleware — это не стандартные k8s объекты, а расширения (Custom Resource Definitions) от Traefik. Без них kubectl apply упадёт с
+  ▎  no matches for kind "IngressRoute".
 
-Traefik jwt-auth middleware вызывает `GET /auth/validate`, которого нет в auth-service.
-Есть `POST /auth/introspect` — нужно либо:
+  Шаг 7 — Применить манифесты
 
-**Вариант A** — добавить хэндлер `GET /auth/validate` в auth-service (обёртка над introspect).
+  cd /home/dryzer/go-projects/friend-net-1
 
-**Вариант B** — временно поменять адрес в `k8s/traefik/middlewares.yaml`:
-```yaml
-forwardAuth:
-  address: "http://auth-service.friend-net.svc.cluster.local:8080/auth/introspect"
-```
-> Но introspect ожидает тело с токеном, а forwardAuth передаёт Authorization header — нужен отдельный хэндлер.
+  # 1. Неймспейс (изолированное пространство для всех ресурсов проекта)
+  kubectl apply -f k8s/namespace.yaml
 
----
+  # 2. Traefik (ingress-контроллер, аналог nginx-proxy)
+  kubectl apply -f k8s/traefik/
 
-## Шаг 6 — Применить манифесты
+  # 3. Инфраструктура — порядок важен!
+  kubectl apply -f k8s/infra/postgres/
+  kubectl apply -f k8s/infra/mongodb/
+  kubectl apply -f k8s/infra/redis/
+  kubectl apply -f k8s/infra/kafka/
 
-```bash
-# Неймспейс
-kubectl apply -f k8s/namespace.yaml
+  # 4. Дождаться готовности инфры
+  kubectl wait --for=condition=ready pod -l app=postgres -n friend-net --timeout=120s
+  kubectl wait --for=condition=ready pod -l app=mongodb -n friend-net --timeout=120s
+  kubectl wait --for=condition=ready pod -l app=redis -n friend-net --timeout=120s
+  kubectl wait --for=condition=ready pod -l app=kafka -n friend-net --timeout=120s
 
-# Traefik
-kubectl apply -f k8s/traefik/
+  # 5. Приложения
+  kubectl apply -f k8s/auth-service/
+  kubectl apply -f k8s/user-service/
 
-# Инфраструктура
-kubectl apply -f k8s/infra/postgres/
-kubectl apply -f k8s/infra/mongodb/
-kubectl apply -f k8s/infra/redis/
-kubectl apply -f k8s/infra/kafka/
+  Шаг 8 — Проверка
 
-# Ждём готовности инфры
-kubectl wait --for=condition=ready pod -l app=postgres -n friend-net --timeout=120s
-kubectl wait --for=condition=ready pod -l app=mongodb -n friend-net --timeout=120s
-kubectl wait --for=condition=ready pod -l app=redis -n friend-net --timeout=120s
-kubectl wait --for=condition=ready pod -l app=kafka -n friend-net --timeout=120s
+  # Все поды в namespace friend-net
+  kubectl get pods -n friend-net
 
-# Приложения
-kubectl apply -f k8s/auth-service/
-kubectl apply -f k8s/user-service/
-```
+  # Ожидаемый вывод:
+  # NAME                            READY   STATUS    
+  # traefik-xxx                     1/1     Running   
+  # auth-service-xxx (x2)           1/1     Running   
+  # user-service-xxx (x2)           1/1     Running   
+  # postgres-0                      1/1     Running   
+  # mongodb-0                       1/1     Running   
+  # redis-xxx                       1/1     Running   
+  # kafka-0                         1/1     Running   
 
----
+  # URL для доступа снаружи
+  minikube service traefik -n friend-net --url
 
-## Шаг 7 — Проверка
+  # Проверить healthcheck
+  curl http://<minikube-ip>/auth/healthz
 
-```bash
-# Статус подов
-kubectl get pods -n friend-net
+  # Логи конкретного сервиса
+  kubectl logs -l app=auth-service -n friend-net --tail=50
+  kubectl logs -l app=postgres -n friend-net --tail=30
 
-# URL для доступа (minikube)
-minikube service traefik -n friend-net --url
+  # Войти в под (как docker exec)
+  kubectl exec -it deployment/auth-service -n friend-net -- sh
 
-# Проверить роуты
-curl http://<minikube-ip>/auth/healthz
+  # Перезапустить деплой после изменений
+  kubectl rollout restart deployment/auth-service -n friend-net
 
-# Логи
-kubectl logs -l app=auth-service -n friend-net --tail=50
-kubectl logs -l app=user-service -n friend-net --tail=50
-kubectl logs -l app=kafka -n friend-net --tail=50
-```
+  Шаг 9 — Полезные команды для отладки
 
----
+  # Описание пода с событиями (если не стартует)
+  kubectl describe pod <pod-name> -n friend-net
 
-## Некритичные проблемы (до prod)
+  # Все события в namespace
+  kubectl get events -n friend-net --sort-by=.lastTimestamp
 
-| Проблема | Где | Рекомендация |
-|----------|-----|--------------|
-| `/healthz` нет в user-service, readiness через TCP | `user-service/deployment.yaml` | добавить HTTP healthz хэндлер |
-| `image: apache/kafka:latest` — нет пинного тега | `infra/kafka/statefulset.yaml` | заменить на `apache/kafka:3.9.0` |
-| `GOOGLE_REDIRECT_URL: http://localhost/...` | `auth-service/configmap.yaml` | менять при деплое на реальный домен |
-| `imagePullPolicy` не выставлен явно | оба deployment.yaml | добавить `Never` для minikube или `Always` для registry |
+  # Статус всех ресурсов
+  kubectl get all -n friend-net
+
+  # Остановить кластер (сохраняет состояние)
+  minikube stop
+
+  # Удалить кластер полностью
+  minikube delete
+
+  ---
+  Итоговый чеклист
+
+  - kubectl установлен (v1.36.1)
+  - minikube установлен (v1.38.1)
+  - Docker запущен
+  - Dockerfiles есть в обоих сервисах
+  - k8s манифесты написаны
+  - Исправить golang:1.25-alpine → golang:1.23-alpine в Dockerfile
+  - Добавить GET /auth/validate обработчик (или временно убрать jwt middleware)
+  - Заполнить k8s/auth-service/secret.yaml реальными значениями
+  - Добавить imagePullPolicy: Never в оба deployment.yaml
+  - Запустить minikube start
+  - Собрать образы через minikube docker-env
+  - Применить манифесты
+
+  ---
+  Хочешь, я сразу исправлю все блокеры (Dockerfile, imagePullPolicy, добавлю GET /auth/validate)? Это займёт 5 минут и после этого можно будет запустить
+  кластер.
