@@ -3,7 +3,7 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-ENV GOPROXY=https://goproxy.io,https://goproxy.cn,direct
+ENV GOPROXY=https://proxy.golang.org,direct
 
 
 # 1. Сначала копируем common, так как он указан в replace

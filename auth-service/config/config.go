@@ -158,10 +158,16 @@ type CORSConfig struct {
 // DefaultCORSConfig returns default CORS configuration
 func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
-		AllowOrigins: []string{
-			"http://localhost:3000",
-			"http://localhost:5173",
-		},
+	AllowOrigins: []string{                                                                                                                            
+          "http://localhost",                                                                                                                            
+          "http://localhost:3000",                                                                                                                       
+          "http://localhost:4173",                                                                                                                       
+          "http://localhost:5173",                                                                                                                       
+          "http://localhost:8080",                                                                                                                       
+          "http://127.0.0.1",                                                                                                                            
+          "http://127.0.0.1:3000",                                                                                                                       
+          "http://127.0.0.1:5173",                                                                                                                       
+      },
 		AllowMethods: []string{
 			"GET",
 			"POST",

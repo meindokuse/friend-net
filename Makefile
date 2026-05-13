@@ -1,8 +1,9 @@
 # Переменные для удобства
-DC_TRAEFIK = docker compose -f ./traefikV2/docker-compose.yaml
-DC_AUTH    = docker compose -f ./auth-service/docker-compose.yaml
-DC_USER    = docker compose -f ./user-service/docker-compose.yaml
-DC_INFRA   = docker compose -f ./infra/docker-compose.yaml # если вынес кафку отдельно
+DC_TRAEFIK    = docker compose -f ./traefikV2/docker-compose.yaml
+DC_AUTH       = docker compose -f ./auth-service/docker-compose.yaml
+DC_USER       = docker compose -f ./user-service/docker-compose.yaml
+DC_INFRA      = docker compose -f ./infra/docker-compose.yaml # если вынес кафку отдельно
+DC_ANALYTIC   = docker compose -f ./analytic-service/docker-compose.yaml
 
 .PHONY: network up down restart logs ps clean
 
@@ -17,6 +18,7 @@ up: network
 	$(DC_INFRA) up -d
 	$(DC_AUTH) up -d
 	$(DC_USER) up -d
+# 	$(DC_ANALYTIC) up -d
 	@echo "🚀 Все сервисы запущены!"
 
 # 3. Остановка всего
@@ -24,6 +26,7 @@ down:
 	$(DC_INFRA) down
 	$(DC_USER) down
 	$(DC_AUTH) down
+# 	$(DC_ANALYTIC) down
 	$(DC_TRAEFIK) down
 	@echo "🛑 Все сервисы остановлены."
 
@@ -32,12 +35,14 @@ restart: down up
 
 # 5. Сборка и запуск (если поменял код в Go)
 build: network
+	$(DC_INFRA) up -d 
+	$(DC_TRAEFIK) up -d --build
 	$(DC_AUTH) up -d --build
 	$(DC_USER) up -d --build
 
 # 6. Просмотр логов (всех сразу)
 logs:
-	docker compose -f ./traefikV2/docker-compose.yaml -f ./auth-service/docker-compose.yaml -f ./user-service/docker-compose.yaml logs -f
+	docker compose -f ./traefikV2/docker-compose.yaml -f ./auth-service/docker-compose.yaml -f ./user-service/docker-compose.yaml -f ./analytic-service/docker-compose.yaml logs -f
 
 # 7. Статус контейнеров
 ps:

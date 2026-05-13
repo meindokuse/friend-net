@@ -1,0 +1,32 @@
+env: local
+
+server:
+  httpAddr: ":8082"
+
+clickhouse:
+  addrs:
+    - "localhost:9000"
+  database: "analytics"
+  username: "default"
+  password: ""
+  timeout: 10s
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic: "analytic.event"
+  groupId: "analytic-service"
+  enabled: true
+  maxWait: 500ms
+  workersCount: 8
+
+batcher:
+  size: 500
+  flushInterval: 5s
+  channelBuffer: 10000
+
+logger:
+  level: "info"
+
+graceful:
+  timeout: 15s
