@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: user-service:latest      # REPLACE: registry/user-service:<tag>
+          image: meindokuse/user-service:latest      # REPLACE: registry/user-service:<tag>
           ports:
             - containerPort: 8081
           envFrom:
