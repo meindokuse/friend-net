@@ -13,15 +13,34 @@ spec:
     metadata:
       labels:
         app: postgres
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "postgres"
+        # Официальный образ postgres читает секреты из файлов через *_FILE переменные
+        vault.hashicorp.com/agent-inject-secret-postgres-user: "secret/data/friend-net/postgres"
+        vault.hashicorp.com/agent-inject-template-postgres-user: |
+          {{- with secret "secret/data/friend-net/postgres" -}}{{ .Data.data.postgres_user }}{{- end -}}
+        vault.hashicorp.com/agent-inject-secret-postgres-password: "secret/data/friend-net/postgres"
+        vault.hashicorp.com/agent-inject-template-postgres-password: |
+          {{- with secret "secret/data/friend-net/postgres" -}}{{ .Data.data.postgres_password }}{{- end -}}
+        vault.hashicorp.com/agent-inject-secret-postgres-db: "secret/data/friend-net/postgres"
+        vault.hashicorp.com/agent-inject-template-postgres-db: |
+          {{- with secret "secret/data/friend-net/postgres" -}}{{ .Data.data.postgres_db }}{{- end -}}
     spec:
+      serviceAccountName: postgres
       containers:
         - name: postgres
           image: postgres:17-alpine
           ports:
             - containerPort: 5432
-          envFrom:
-            - secretRef:
-                name: postgres-secret
+          env:
+            # Официальный postgres образ поддерживает _FILE суффикс — читает секрет из файла
+            - name: POSTGRES_USER_FILE
+              value: /vault/secrets/postgres-user
+            - name: POSTGRES_PASSWORD_FILE
+              value: /vault/secrets/postgres-password
+            - name: POSTGRES_DB_FILE
+              value: /vault/secrets/postgres-db
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

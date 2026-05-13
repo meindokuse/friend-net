@@ -12,17 +12,34 @@ spec:
     metadata:
       labels:
         app: auth-service
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "auth-service"
+        # Vault agent пишет /vault/secrets/env — shell-файл с переменными
+        vault.hashicorp.com/agent-inject-secret-env: "secret/data/friend-net/auth"
+        vault.hashicorp.com/agent-inject-template-env: |
+          {{- with secret "secret/data/friend-net/auth" -}}
+          POSTGRES_PASSWORD={{ .Data.data.postgres_password }}
+          JWT_SECRET={{ .Data.data.jwt_secret }}
+          JWT_REFRESH_SECRET={{ .Data.data.jwt_refresh_secret }}
+          GOOGLE_CLIENT_ID={{ .Data.data.google_client_id }}
+          GOOGLE_CLIENT_SECRET={{ .Data.data.google_client_secret }}
+          {{- end -}}
     spec:
+      serviceAccountName: auth-service
       containers:
         - name: auth-service
-          image: auth-service:latest      # REPLACE: registry/auth-service:<tag>
+          image: meindokuse/auth-service:latest
+          imagePullPolicy: Never
+          # Sourcing /vault/secrets/env экспортирует переменные в процесс бинаря
+          command: ["sh", "-c"]
+          args:
+            - "set -a && . /vault/secrets/env && set +a && exec /app/auth-service"
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: auth-service-config
-            - secretRef:
-                name: auth-service-secret
           readinessProbe:
             httpGet:
               path: /healthz
