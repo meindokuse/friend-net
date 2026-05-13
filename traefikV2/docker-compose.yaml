@@ -1,26 +1,33 @@
 services:
 
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: docker-proxy
+    privileged: true # Нужно для корректной работы с SELinux на Fedora
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+    environment:
+      # Разрешаем только то, что нужно Traefik
+      - CONTAINERS=1
+      - SERVICES=1
+      - TASKS=1
+      - NETWORKS=1
+      - NODES=1
+      - POST=0 # Запрещаем любые изменения (создание, удаление) через API
+    networks:
+      - traefik-net
   traefik:
     image: traefik:v2.11
-    command:
-      - "--log.level=DEBUG"             # Видеть всё: от загрузки конфигов до матчинга роутеров
-      - "--accesslog=true"              # Включить логи каждого запроса
-      - "--accesslog.format=common"     # Обычный текстовый формат (проще читать в терминале)
-      - "--api.insecure=true"           # Чтобы дашборд работал
-      - "--providers.docker=true"
-      - "--providers.file.directory=/etc/traefik/dynamic" # Убедись, что путь верный
     container_name: traefik
-    environment:
-      # Это заставит внутренний клиент Traefik использовать API 1.41,
-      # который точно поддерживается твоим демоном (у тебя мин. 1.40)
-      - DOCKER_API_VERSION=1.41 
     ports:
       - "80:80"
       - "8080:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./dynamic:/etc/traefik/dynamic:ro
+      # Сокет больше НЕ НУЖЕН. Оставляем только конфиги.
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro,z
+      - ./dynamic:/etc/traefik/dynamic:ro,z
+    depends_on:
+      - docker-proxy
     networks:
       - traefik-net
 

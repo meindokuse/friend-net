@@ -24,7 +24,8 @@ services:
       - traefik-net
     labels:
       - "traefik.enable=true"
-      
+      - "traefik.docker.network=traefik-net"
+
       # --- PUBLIC ROUTER (Регистрация и Поиск) ---
       - "traefik.http.routers.users-public.rule=Host(`localhost`) && ( (Path(`/users`) && Method(`POST`)) || PathPrefix(`/users/search`) || PathPrefix(`/users/username/`) )"
       - "traefik.http.routers.users-public.priority=100"

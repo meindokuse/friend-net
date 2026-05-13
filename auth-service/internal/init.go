@@ -141,6 +141,7 @@ func loggingMiddleware() gin.HandlerFunc {
 		ctx := logger.InitRequestContext(c.Request.Context(), traceID, c.FullPath())
 		c.Request = c.Request.WithContext(ctx)
 		c.Header("X-Trace-Id", traceID)
+		
 
 		slog.DebugContext(ctx, "request started",
 			"method", c.Request.Method,
