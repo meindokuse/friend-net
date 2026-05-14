@@ -6,7 +6,20 @@ metadata:
 spec:
   backoffLimit: 5
   template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "postgres"
+        # agent-init-first: vault-agent-init выполнится до пользовательских init-контейнеров
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-pre-populate-only: "true"
+        vault.hashicorp.com/agent-inject-secret-pgenv: "secret/data/friend-net/postgres"
+        vault.hashicorp.com/agent-inject-template-pgenv: |
+          {{- with secret "secret/data/friend-net/postgres" -}}
+          PGPASSWORD={{ .Data.data.postgres_password }}
+          {{- end -}}
     spec:
+      serviceAccountName: postgres
       restartPolicy: OnFailure
       initContainers:
         - name: wait-for-postgres
@@ -15,25 +28,15 @@ spec:
             - sh
             - -c
             - until pg_isready -h postgres -U postgres; do echo "waiting for postgres..."; sleep 2; done
-          env:
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secret
-                  key: POSTGRES_PASSWORD
       containers:
         - name: migrate
           image: postgres:17-alpine
           command:
             - sh
             - -c
-            - psql -h postgres -U postgres -d auth_service_new -f /migrations/init.sql
-          env:
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secret
-                  key: POSTGRES_PASSWORD
+            - |
+              set -a && . /vault/secrets/pgenv && set +a
+              psql -h postgres -U postgres -d auth_service_new -f /migrations/init.sql
           volumeMounts:
             - name: migrations
               mountPath: /migrations

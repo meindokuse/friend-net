@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   auth-service:
     build:
@@ -8,9 +6,8 @@ services:
 #    ports:
 #      - "8081:8080"
     env_file:
-    - .env # Загрузит все переменные из файла
+    - .env
     environment:
-    # Переопределяем адреса на имена контейнеров
     - POSTGRES_HOST=postgres
     - REDIS_ADDR=redis:6379
     - KAFKA_BROKERS=kafka:9092
@@ -25,8 +22,11 @@ services:
       - traefik-net
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
       - "traefik.http.routers.auth-public.rule=Host(`localhost`) && PathPrefix(`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/introspect`, `/auth/google`, `/healthz`)"
+      - "traefik.http.routers.auth-public.entrypoints=web"
       - "traefik.http.routers.auth-private.rule=Host(`localhost`) && PathPrefix(`/auth/logout`, `/auth/sessions`, `/auth/link`)"
+      - "traefik.http.routers.auth-private.entrypoints=web"
       - "traefik.http.routers.auth-private.middlewares=jwt-auth@file"
       - "traefik.http.services.auth.loadbalancer.server.port=8080"
 
@@ -40,7 +40,7 @@ services:
       - POSTGRES_DB=auth_service_new
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./tools/migrations:/docker-entrypoint-initdb.d
+      - ./tools/migrations:/docker-entrypoint-initdb.d:z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -62,29 +62,6 @@ services:
       retries: 5
     networks:
       - auth-network
-
-  # Uncomment when ready to use Kafka
-  # zookeeper:
-  #   image: confluentinc/cp-zookeeper:7.5.0
-  #   environment:
-  #     ZOOKEEPER_CLIENT_PORT: 2181
-  #     ZOOKEEPER_TICK_TIME: 2000
-  #   networks:
-  #     - auth-network
-
-  # kafka:
-  #   image: confluentinc/cp-kafka:7.5.0
-  #   depends_on:
-  #     - zookeeper
-  #   ports:
-  #     - "9092:9092"
-  #   environment:
-  #     KAFKA_BROKER_ID: 1
-  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-  #   networks:
-  #     - auth-network
 
 volumes:
   postgres_data:

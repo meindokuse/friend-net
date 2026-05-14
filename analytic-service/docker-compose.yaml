@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  analytic-service:
+    build:
+      context: ..
+      dockerfile: analytic-service/Dockerfile
+    environment:
+      - APP_ENV=local
+      - HTTP_ADDR=:8082
+      - CLICKHOUSE_ADDRS=clickhouse:9000
+      - CLICKHOUSE_DATABASE=analytics
+      - CLICKHOUSE_USERNAME=default
+      - CLICKHOUSE_PASSWORD=
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=analytic.event
+      - KAFKA_GROUP_ID=analytic-service
+      - KAFKA_ENABLED=true
+      - BATCHER_SIZE=500
+      - BATCHER_FLUSH_INTERVAL=5s
+      - BATCHER_CHANNEL_BUFFER=10000
+      - LOG_LEVEL=info
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - analytic-network
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.analytics.rule=Host(`localhost`) && PathPrefix(`/analytics`)"
+      - "traefik.http.routers.analytics.entrypoints=web"
+      - "traefik.http.routers.analytics.middlewares=jwt-auth@file"
+      - "traefik.http.services.analytics.loadbalancer.server.port=8082"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12-alpine
+    environment:
+      - CLICKHOUSE_DB=analytics
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ports:
+      - "8123:8123"  # HTTP interface (for Kafka UI / ClickHouse client)
+      - "9001:9000"  # Native protocol (exposed on 9001 to avoid conflict with Kafka)
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - analytic-network
+
+volumes:
+  clickhouse_data:
+
+networks:
+  analytic-network:
+    driver: bridge
+  traefik-net:
+    external: true

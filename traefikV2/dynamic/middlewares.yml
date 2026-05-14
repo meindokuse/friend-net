@@ -24,6 +24,7 @@ http:
         accessControlAllowOriginList:
           - "https://yourdomain.com"
           - "http://localhost:3000"
+          - "http://localhost:5173"
         accessControlMaxAge: 100
         addVaryHeader: true
 
@@ -42,6 +43,7 @@ http:
         trustForwardHeader: true
         authResponseHeaders:
           - "X-Account-ID"
+          - "X-Session-ID"
 
     # Стриппинг префикса /api/v1/users -> /
     strip-users-prefix:

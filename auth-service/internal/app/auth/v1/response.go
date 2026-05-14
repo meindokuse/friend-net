@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"errors"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -8,6 +10,7 @@ import (
 	authlogin "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/login"
 	authrefresh "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/auth/refresh"
 	oauthlogin "github.com/meindokuse/cloud-drive/auth-service-new/internal/application/service/oauth/login"
+	"github.com/meindokuse/cloud-drive/auth-service-new/internal/pkg/terror"
 )
 
 func (i *Implementation) respondWithTokenPairFromLogin(ctx *gin.Context, statusCode int, result *authlogin.Result) {
@@ -63,6 +66,25 @@ func (i *Implementation) setRefreshCookie(ctx *gin.Context, refreshToken string,
 		i.config.CookieSecure,
 		true,
 	)
+}
+
+func (i *Implementation) respondWithError(ctx *gin.Context, err error) {
+	statusCode := http.StatusInternalServerError
+
+	if terror.IsNotFound(err) {
+		statusCode = http.StatusNotFound
+	} else if terror.IsUnauthorized(err) {
+		statusCode = http.StatusUnauthorized
+	} else if terror.IsConflict(err) {
+		statusCode = http.StatusConflict
+	} else {
+		var e *terror.Error
+		if errors.As(err, &e) && e.Type == "BAD_REQUEST" {
+			statusCode = http.StatusBadRequest
+		}
+	}
+
+	ctx.JSON(statusCode, gin.H{"error": err.Error()})
 }
 
 func (i *Implementation) clearRefreshCookie(ctx *gin.Context) {
