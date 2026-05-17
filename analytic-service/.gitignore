@@ -1,0 +1,31 @@
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables & secrets
+.env
+*.env
+.env.*
+secrets.yaml
+
+# Dependency directories
+vendor/
+
+# Go cache & binaries
+.gocache/
+.gomodcache/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# AI Context Files (Strict Ignore)
+**/CLAUDE.md
+CLAUDE.md

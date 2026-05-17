@@ -1,51 +1,31 @@
-# Binaries
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables & secrets
+.env
+*.env
+.env.*
+secrets.yaml
+
+# Dependency directories
+vendor/
+
+# Go cache & binaries
+.gocache/
+.gomodcache/
+bin/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-auth-service-new
 
-# Test binary
-*.test
-
-# Output of the go coverage tool
-*.out
-
-# Go workspace file
-go.work
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Build
-/bin/
-/dist/
-
-# Logs
-*.log
-logs/
-
-# Temporary files
-tmp/
-temp/
-
-# Dependency directories
-vendor/
-
-# Go cache
-.gocache/
-.gomodcache/
+# AI Context Files (Strict Ignore)
+**/CLAUDE.md
+CLAUDE.md
